@@ -1,0 +1,109 @@
+COBRANÇA CONDOMINIAL - instalação e uso
+=======================================
+
+Planilhas de cobrança judicial e extrajudicial de cotas condominiais em atraso.
+Não precisa instalar nada: o programa abre no Google Chrome ou no Microsoft Edge.
+
+
+1. INSTALAÇÃO (equipe compartilhando o Dropbox)
+-----------------------------------------------
+a) Copie esta pasta inteira ("cobranca-condominial") para o Dropbox, por exemplo:
+      Dropbox\Cobrança Condominial\programa
+b) Crie, também no Dropbox, uma pasta vazia para os dados:
+      Dropbox\Cobrança Condominial\dados
+c) Compartilhe a pasta "Cobrança Condominial" com as pessoas da equipe.
+
+Em cada computador:
+d) Abra o arquivo "Abrir Cobranca Condominial.html" com o Chrome ou o Edge
+   (botão direito > Abrir com). Dica: crie um favorito na barra do navegador.
+e) Clique em "Escolher pasta…" e escolha a pasta "dados" do Dropbox.
+   Informe o seu nome: ele fica registrado em cada alteração.
+f) Nas próximas vezes, clique em "Abrir". O navegador pode pedir de novo a
+   permissão para a pasta. Escolha "Permitir em todas as visitas", se aparecer.
+
+Como os dados ficam gravados:
+- cada condomínio e cada cobrança é um arquivo separado (pastas "condominios" e
+  "cobrancas"). Duas pessoas podem trabalhar ao mesmo tempo em cobranças diferentes;
+- se duas pessoas alterarem a MESMA cobrança, quem salvar por último recebe um aviso,
+  e os dados são recarregados para conferência (nada é sobrescrito sem aviso);
+- se mesmo assim o Dropbox criar uma "cópia em conflito", o programa avisa na tela inicial;
+- o que é excluído vai para a pasta "lixeira" dos dados (nada é apagado definitivamente);
+- o Dropbox também guarda o histórico de versões de cada arquivo.
+
+
+2. PRIMEIROS PASSOS
+-------------------
+1. Configurações: dados do escritório (aparecem no cabeçalho das planilhas, com o
+   logotipo) e os padrões de multa, juros, honorários contratuais e índice.
+2. Condomínios: razão social, CNPJ, endereço e, se forem diferentes do padrão,
+   os encargos da convenção e o percentual de honorários contratados com o cliente.
+3. Cobranças: uma por unidade (judicial ou extrajudicial), com um ou mais devedores.
+
+
+3. COBRANÇA (UMA POR UNIDADE)
+-----------------------------
+- Cotas em aberto: lance mês a mês (competência, descrição, vencimento, valor).
+  "Lançar meses em sequência" preenche vários meses de uma vez; os valores podem ser
+  ajustados mês a mês depois. Marque "Paga" para tirar a cota do cálculo sem apagá-la.
+- Despesas pagas: custas, certidões, registros etc., com data, rubrica, descrição e
+  valor. Marque "Corrigir" para atualizar desde a data do pagamento.
+- Encargos e honorários contratuais: em branco, valem os do condomínio.
+  "Embutidos no valor originário das cotas": o valor de cada cota já sai acrescido do
+  percentual dos honorários contratuais, sem linha própria e sem menção na planilha.
+- Honorários sucumbenciais: percentual (sobre o débito, com ou sem as despesas) ou
+  valor fixo, que pode ser corrigido desde a data da fixação.
+- Cálculo: escolha a data e confira o resumo. Gere a planilha em PDF ou Excel.
+
+
+4. CRITÉRIOS DE CÁLCULO
+-----------------------
+- Correção monetária desde o vencimento de cada cota:
+    UFIR-RJ: valor do ano do cálculo ÷ valor do ano do vencimento (tabela da SEFAZ-RJ,
+             de 2000 a 2026; inclua os anos seguintes em Configurações > Índices);
+    IGP-M e IPCA: variação mensal acumulada do mês do vencimento até o mês anterior ao
+             do cálculo (Banco Central, atualizado automaticamente pela internet).
+  Se o índice de algum mês ainda não foi divulgado, a planilha avisa.
+- Juros de mora: % ao mês, pro rata die, sobre o valor corrigido.
+- Multa: % sobre o valor corrigido.
+- Honorários contratuais: % sobre o débito atualizado (cotas + correção + juros + multa).
+- Honorários sucumbenciais: % sobre o débito atualizado + honorários contratuais
+  (+ despesas, se marcado), ou valor fixo.
+
+
+5. PLANILHAS (PDF E EXCEL)
+--------------------------
+- Por cobrança: botões na seção "Cálculo" da cobrança.
+- Por cliente (condomínio): na tela do condomínio, "Planilha do cliente".
+- Por devedor: menu Devedores (o mesmo devedor em várias unidades ou condomínios;
+  identificado pelo CPF/CNPJ, ou pelo nome se não houver documento).
+- Por imóvel: menu Imóveis (todas as cobranças da mesma unidade).
+Relatórios com várias cobranças trazem um resumo e, depois, o detalhamento de cada uma.
+No Excel, cada cobrança fica numa aba, com fórmulas em tudo:
+- alterando a data do cálculo, a multa, os juros ou os honorários, tudo é recalculado,
+  inclusive os fatores de correção (os índices ficam na aba "Índices");
+- para incluir meses, preencha as linhas em branco da tabela de cotas (competência,
+  descrição, vencimento e valor originário): correção, juros e multa são calculados e
+  somados ao total. O mesmo vale para as despesas (data, rubrica e valor pago);
+- se precisar de mais linhas, insira-as antes da última linha em branco e copie as
+  fórmulas da linha de cima;
+- quando os honorários contratuais estiverem embutidos nas cotas, digite o valor da cota
+  já acrescido do percentual (ou inclua o mês pelo programa, que faz isso sozinho).
+No programa, as cotas de uma cobrança (inclusive importada) podem ser acrescentadas a
+qualquer momento: "+ Adicionar cota" ou "Lançar meses em sequência".
+
+
+6. IMPORTAR PLANILHAS EXISTENTES (EXCEL, CSV OU PDF)
+---------------------------------------------------
+Aceita .xlsx, .csv e PDF. Planilhas antigas (.xls) precisam ser salvas antes como .xlsx.
+PDF: serve o PDF gerado por sistema ou exportado do Excel (com texto selecionável).
+PDF escaneado (fotografia do papel) não pode ser lido. No PDF, o programa reconstrói a
+tabela pela posição do texto; confira a prévia. Se o PDF tiver mais de uma tabela (ex.:
+cotas e despesas), informe a "Linha dos títulos" da tabela que quer importar.
+- Na cobrança: "Importar planilha" em Cotas ou em Despesas.
+- No condomínio: "Importar planilha com várias unidades": uma linha por cota, com uma
+  coluna de unidade (e, se houver, devedor e CPF/CNPJ), ou planilha de uma unidade só, com
+  a unidade e o devedor digitados (o programa tenta achá-los no cabeçalho da planilha).
+  Cria uma cobrança por unidade; se for uma só, abre a cobrança para você completar.
+O programa sugere a linha dos títulos e as colunas; confira na prévia antes de importar.
+Linhas sem valor, sem data ou de totais são ignoradas. Se não houver coluna de
+vencimento, ele é calculado pela competência e pelo dia informado.

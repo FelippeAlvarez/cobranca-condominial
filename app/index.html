@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f4e79">
+<title>Cobrança Condominial</title>
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<header class="topo">
+  <button id="btMenu" class="bt-menu" aria-label="Abrir menu">&#9776;</button>
+  <a class="marca" href="#/inicio"><img src="icone.svg" alt=""><span>Cobrança Condominial</span></a>
+  <div class="topo-dir"><div id="statusArmaz" class="status-armaz"></div></div>
+</header>
+<nav id="menu" class="menu">
+  <a href="#/inicio" data-rota="inicio">Cobranças</a>
+  <a href="#/cobranca/nova" data-rota="cobranca">Nova cobrança</a>
+  <a href="#/condominios" data-rota="condomini">Condomínios (clientes)</a>
+  <a href="#/devedores" data-rota="devedores">Devedores</a>
+  <a href="#/imoveis" data-rota="imoveis">Imóveis</a>
+  <a href="#/relatorios" data-rota="relatorios">Planilhas</a>
+  <a href="#/config" data-rota="config">Configurações</a>
+  <div id="rodapeMenu" class="rodape-menu"></div>
+</nav>
+<div id="fundoMenu" class="fundo-menu"></div>
+<main id="conteudo"><p class="carregando">Carregando…</p></main>
+
+<div id="modal" class="modal" hidden><div class="modal-caixa" id="modalCaixa"></div></div>
+<div id="aviso" class="aviso" role="status"></div>
+<datalist id="dlRubricas"></datalist>
+<datalist id="dlDescCotas"></datalist>
+
+<script src="lib/jspdf.umd.min.js"></script>
+<script src="util.js"></script>
+<script src="armazenamento.js"></script>
+<script src="indices.js"></script>
+<script src="calculo.js"></script>
+<script src="xlsx.js"></script>
+<script src="pdf.js"></script>
+<script src="relatorios.js"></script>
+<script src="importar.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
