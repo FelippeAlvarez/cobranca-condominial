@@ -701,7 +701,10 @@ async function telaConexao() {
   const suporta = 'showDirectoryPicker' in window;
   $('#conteudo').innerHTML = `<div class="boas-vindas"><h1>Cobrança Condominial</h1>
     <p class="dica">Planilhas de cobrança judicial e extrajudicial de cotas condominiais em atraso.</p></div>
-    ${suporta ? '' : '<p class="alerta">Este navegador não permite gravar numa pasta. Abra o programa no Google Chrome ou no Microsoft Edge.</p>'}
+    ${suporta ? '' : ehCelular()
+      ? '<p class="alerta">No celular, o navegador não permite acessar a pasta do Dropbox. Para trabalhar com os dados da equipe, use o computador (Chrome ou Edge). No celular, é possível testar o programa com dados guardados só neste aparelho.</p>'
+      : '<p class="alerta">Este navegador não permite gravar numa pasta. Abra o programa no Google Chrome ou no Microsoft Edge.</p>'}
+    <p id="avisoInstalar" hidden><button class="bt" id="btInstalar2">Instalar o aplicativo neste aparelho</button></p>
     <div class="opcoes-conexao">
       ${salva ? `<div class="cartao destaque"><h2>Continuar</h2><p>Pasta dos dados: <b>${esc(salva)}</b></p><button class="bt primario" id="btRetomar">Abrir</button></div>` : ''}
       <div class="cartao"><h2>${salva ? 'Escolher outra pasta' : 'Escolher a pasta dos dados'}</h2>
@@ -722,6 +725,7 @@ async function telaConexao() {
   }));
   $('#btPasta').addEventListener('click', () => executar(async () => { await Armaz.conectarPasta(); await entrar(); }));
   $('#btLocal').addEventListener('click', () => executar(async () => { Armaz.usarLocal(); await entrar(); }));
+  atualizarBotoesInstalar();
 }
 
 async function conectado() {
@@ -747,8 +751,46 @@ function eventosGlobais() {
   });
 }
 
+/* ================= Aplicativo instalável (PWA) ================= */
+const ehCelular = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const ehIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const instalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let pedidoInstalacao = null;
+
+function atualizarBotoesInstalar() {
+  const mostrar = !instalado() && (pedidoInstalacao || ehIOS());
+  [$('#btInstalar'), $('#avisoInstalar')].forEach(el => { if (el) el.hidden = !mostrar; });
+}
+
+async function instalarApp() {
+  if (pedidoInstalacao) {
+    pedidoInstalacao.prompt();
+    await pedidoInstalacao.userChoice.catch(() => null);
+    pedidoInstalacao = null;
+    atualizarBotoesInstalar();
+    return;
+  }
+  abrirModal(`<div class="modal-cab"><h2>Instalar no iPhone ou iPad</h2><button class="bt-x" data-fechar>&times;</button></div>
+    <ol><li>Abra este endereço no <b>Safari</b>.</li><li>Toque no botão <b>Compartilhar</b> (quadrado com seta para cima).</li>
+    <li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol>
+    <p class="dica">O ícone "Cobrança" aparece na tela de início e o programa abre em tela cheia, como um aplicativo.</p>`, 'modal-medio');
+}
+
+function prepararInstalacao() {
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker', e));
+  }
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedidoInstalacao = e; atualizarBotoesInstalar(); });
+  window.addEventListener('appinstalled', () => { pedidoInstalacao = null; atualizarBotoesInstalar(); aviso('Aplicativo instalado.'); });
+  document.addEventListener('click', e => {
+    if (e.target.closest('#btInstalar, #btInstalar2')) { e.preventDefault(); executar(instalarApp); }
+  });
+  atualizarBotoesInstalar();
+}
+
 async function iniciar() {
   eventosGlobais();
+  prepararInstalacao();
   const modo = localStorage.getItem('cc-modo');
   try {
     if (modo === 'local') { Armaz.usarLocal(); return await conectado(); }

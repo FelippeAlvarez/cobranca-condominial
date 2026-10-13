@@ -5,7 +5,7 @@ $l = New-Object Net.HttpListener
 $l.Prefixes.Add("http://localhost:$Porta/")
 $l.Start()
 Write-Host "Servindo $raiz em http://localhost:$Porta/"
-$tipos = @{ '.html'='text/html; charset=utf-8'; '.js'='application/javascript; charset=utf-8'; '.css'='text/css; charset=utf-8'; '.svg'='image/svg+xml'; '.json'='application/json' }
+$tipos = @{ '.png'='image/png'; '.webmanifest'='application/manifest+json'; '.html'='text/html; charset=utf-8'; '.js'='application/javascript; charset=utf-8'; '.css'='text/css; charset=utf-8'; '.svg'='image/svg+xml'; '.json'='application/json' }
 while ($l.IsListening) {
   $c = $l.GetContext()
   $p = [Uri]::UnescapeDataString($c.Request.Url.AbsolutePath.TrimStart('/'))
