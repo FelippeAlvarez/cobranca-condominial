@@ -9,7 +9,7 @@ Não precisa instalar nada: o programa abre no Google Chrome ou no Microsoft Edg
 -----------------------------------------------
 MAIS SIMPLES: abra no Chrome ou no Edge o endereço
       https://felippealvarez.github.io/cobranca-condominial/
-   (crie um favorito) e siga a partir do item "e" abaixo. Assim todos usam sempre a
+   (crie um favorito), crie a pasta de dados (item "b") e siga a partir do item "e". Assim todos usam sempre a
    versão mais recente, sem copiar arquivos. Os dados continuam só na pasta do Dropbox.
 
 OU, para usar como arquivo:
