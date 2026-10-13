@@ -7,6 +7,12 @@ Não precisa instalar nada: o programa abre no Google Chrome ou no Microsoft Edg
 
 1. INSTALAÇÃO (equipe compartilhando o Dropbox)
 -----------------------------------------------
+MAIS SIMPLES: abra no Chrome ou no Edge o endereço
+      https://felippealvarez.github.io/cobranca-condominial/
+   (crie um favorito) e siga a partir do item "e" abaixo. Assim todos usam sempre a
+   versão mais recente, sem copiar arquivos. Os dados continuam só na pasta do Dropbox.
+
+OU, para usar como arquivo:
 a) Copie esta pasta inteira ("cobranca-condominial") para o Dropbox, por exemplo:
       Dropbox\Cobrança Condominial\programa
 b) Crie, também no Dropbox, uma pasta vazia para os dados:

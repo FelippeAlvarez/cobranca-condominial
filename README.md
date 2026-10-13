@@ -9,7 +9,9 @@ Programa para gerar e atualizar planilhas de cobrança judicial e extrajudicial 
 - Planilhas em PDF e Excel (com fórmulas) por cobrança, devedor, imóvel e cliente
 - Importação de planilhas Excel, CSV e PDF
 
-Funciona no Google Chrome ou Microsoft Edge, sem instalação: abra `Abrir Cobranca Condominial.html` e escolha a pasta dos dados (por exemplo, uma pasta compartilhada do Dropbox). Os dados ficam somente nessa pasta, nunca neste repositório.
+**Usar:** https://felippealvarez.github.io/cobranca-condominial/
+
+Funciona no Google Chrome ou Microsoft Edge, sem instalação: abra o endereço acima (ou o arquivo `Abrir Cobranca Condominial.html`) e escolha a pasta dos dados (por exemplo, uma pasta compartilhada do Dropbox). Os dados ficam somente nessa pasta, nunca neste repositório.
 
 Veja [COMO USAR.txt](COMO%20USAR.txt).
 
