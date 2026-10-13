@@ -17,7 +17,7 @@ function novoDocumento(paisagem) {
     let x = P.M, altLogo = 0;
     if (adm.logo && adm.logoL && adm.logoA) {
       const e = Math.min(40 / adm.logoL, 18 / adm.logoA), w = adm.logoL * e, h = adm.logoA * e;
-      try { doc.addImage(adm.logo, adm.logo.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG', x, top, w, h); x += w + 5; altLogo = h; } catch (err) { console.warn(err); }
+      try { doc.addImage(adm.logo, adm.logo.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG', x, top, w, h, 'logo', 'FAST'); x += w + 5; altLogo = h; } catch (err) { console.warn(err); }
     }
     const larg = P.W - P.M - x;
     let y = top + 4.8;

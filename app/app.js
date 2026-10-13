@@ -628,7 +628,9 @@ function telaConfig() {
       <div class="campo"><label>Telefone</label><input name="telefone" value="${esc(e.telefone || '')}"></div>
       <div class="campo"><label>E-mail</label><input name="email" value="${esc(e.email || '')}"></div>
       <div class="campo w2"><label>Site</label><input name="site" value="${esc(e.site || '')}"></div>
-      <div class="campo wfull"><label>Logotipo (PNG ou JPG)</label><div class="logo-ctl">${e.logo ? `<img src="${e.logo}" alt="">` : ''}<input type="file" id="logoArq" accept="image/png,image/jpeg">${e.logo ? '<button type="button" class="bt pequeno" id="logoTirar">Remover</button>' : ''}</div></div>
+      <div class="campo wfull"><label>Logotipo (PNG ou JPG)</label>
+        <div class="logo-ctl"><span id="logoPrevia">${e.logo ? `<img src="${e.logo}" alt="Logotipo">` : '<span class="dica">Sem logotipo</span>'}</span><input type="file" id="logoArq" accept="image/png,image/jpeg"><button type="button" class="bt pequeno" id="logoTirar" ${e.logo ? '' : 'hidden'}>Remover</button></div>
+        <small>Aparece à esquerda do nome e dos dados do escritório, no cabeçalho das planilhas em PDF e Excel. Clique em "Salvar configurações" depois de escolher.</small></div>
     </div>
     <h3 class="sec" style="margin-top:16px">Padrões de encargos e honorários</h3>
     <p class="dica">Usados quando o condomínio e a cobrança não têm critérios próprios. Código Civil, art. 1.336, § 1º: juros convencionados ou, se não previstos, de 1% ao mês, e multa de até 2%.</p>
@@ -647,15 +649,29 @@ function telaConfig() {
   ligarIndices();
   let logo = { logo: e.logo, logoL: e.logoL, logoA: e.logoA };
   $('#fEsc').addEventListener('input', marcarSujo);
+  const mostrarLogo = () => {
+    $('#logoPrevia').innerHTML = logo.logo ? `<img src="${logo.logo}" alt="Logotipo">` : '<span class="dica">Sem logotipo</span>';
+    $('#logoTirar').hidden = !logo.logo;
+  };
   $('#logoArq').addEventListener('change', ev => executar(async () => {
     const f = ev.target.files[0]; if (!f) return;
-    if (f.size > 600e3) throw new Error('Imagem grande demais (máximo 600 KB).');
+    if (f.size > 8e6) throw new Error('Imagem grande demais (máximo 8 MB).');
     const url = await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(f); });
     const img = new Image(); img.src = url; await img.decode();
-    logo = { logo: url, logoL: img.naturalWidth, logoA: img.naturalHeight };
+    // Reduz imagens grandes (até 600 px de largura ou 240 px de altura), mantendo a transparência do PNG
+    const fat = Math.min(1, 600 / img.naturalWidth, 240 / img.naturalHeight);
+    const w = Math.round(img.naturalWidth * fat), h = Math.round(img.naturalHeight * fat);
+    let final = url;
+    if (fat < 1 || f.size > 300e3) {
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      final = f.type === 'image/jpeg' ? cv.toDataURL('image/jpeg', 0.9) : cv.toDataURL('image/png');
+    }
+    logo = { logo: final, logoL: w, logoA: h };
+    mostrarLogo();
     marcarSujo();
   }));
-  $('#logoTirar')?.addEventListener('click', () => { logo = {}; $('.logo-ctl img')?.remove(); marcarSujo(); });
+  $('#logoTirar').addEventListener('click', () => { logo = {}; $('#logoArq').value = ''; mostrarLogo(); marcarSujo(); });
   $('#fEsc').addEventListener('submit', ev => { ev.preventDefault(); executar(async () => {
     const f = new FormData(ev.target);
     c.escritorio = { ...Object.fromEntries(['nome', 'documento', 'oab', 'endereco', 'telefone', 'email', 'site'].map(k => [k, String(f.get(k) || '').trim()])), ...logo };

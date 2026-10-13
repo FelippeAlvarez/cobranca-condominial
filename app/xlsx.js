@@ -6,7 +6,7 @@
            f fator, tit título, cab cabeçalho, i inteiro, bt texto/total, it inteiro/total
 */
 
-const XLSX_ESTILO = { t: 0, b: 1, m: 2, mt: 3, d: 4, p: 5, f: 6, tit: 7, cab: 8, i: 9, bt: 10, it: 11 };
+const XLSX_ESTILO = { t: 0, b: 1, m: 2, mt: 3, d: 4, p: 5, f: 6, tit: 7, cab: 8, i: 9, bt: 10, it: 11, tq: 12 };
 
 const XLSX_ESTILOS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -15,7 +15,7 @@ const XLSX_ESTILOS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEAF0F7"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="12">
+<cellXfs count="13">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
@@ -28,6 +28,7 @@ const XLSX_ESTILOS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 <xf numFmtId="1" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center"/></xf>
 <xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
 <xf numFmtId="1" fontId="1" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -52,7 +53,7 @@ function celulaXLSX(cel, lin, col) {
   return `<c r="${r}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`;
 }
 
-function folhaXLSX({ linhas, larguras = [], mesclar = [], congelar }) {
+function folhaXLSX({ linhas, larguras = [], mesclar = [], congelar, imagem }) {
   const cols = larguras.length ? `<cols>${larguras.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
   const dados = linhas.map((ln, i) => {
     if (!ln) return '';
@@ -63,7 +64,7 @@ function folhaXLSX({ linhas, larguras = [], mesclar = [], congelar }) {
   const painel = congelar ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${congelar}" topLeftCell="A${congelar + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` : '';
   const merges = mesclar.length ? `<mergeCells count="${mesclar.length}">${mesclar.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : '';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${painel}${cols}<sheetData>${dados}</sheetData>${merges}<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToHeight="0"/></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>${painel}${cols}<sheetData>${dados}</sheetData>${merges}<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>${imagem ? '<drawing r:id="rId1"/>' : ''}</worksheet>`;
 }
 
 // folhas: [{ nome, linhas, larguras, mesclar, congelar }]
@@ -81,6 +82,23 @@ function gerarXLSX(folhas) {
     'xl/styles.xml': XLSX_ESTILOS_XML,
   };
   folhas.forEach((f, i) => { arquivos[`xl/worksheets/sheet${i + 1}.xml`] = folhaXLSX(f); });
+  // Imagens (logotipo): uma por folha, no canto superior esquerdo
+  const extras = [];
+  folhas.forEach((f, i) => {
+    const img = f.imagem && imagemDeDataURL(f.imagem.dados);
+    if (!img) { if (f.imagem) arquivos[`xl/worksheets/sheet${i + 1}.xml`] = folhaXLSX({ ...f, imagem: null }); return; }
+    const n = i + 1, emu = px => Math.round(px * 9525);
+    arquivos[`xl/media/imagem${n}.${img.ext}`] = img.bytes;
+    arquivos[`xl/worksheets/_rels/sheet${n}.xml.rels`] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${n}.xml"/></Relationships>`;
+    arquivos[`xl/drawings/_rels/drawing${n}.xml.rels`] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/imagem${n}.${img.ext}"/></Relationships>`;
+    arquivos[`xl/drawings/drawing${n}.xml`] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>${emu(4)}</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>${emu(4)}</xdr:rowOff></xdr:from><xdr:ext cx="${emu(f.imagem.w)}" cy="${emu(f.imagem.h)}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${n + 1}" name="Logotipo"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(f.imagem.w)}" cy="${emu(f.imagem.h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>`;
+    extras.push(`<Override PartName="/xl/drawings/drawing${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+  });
+  if (extras.length) arquivos['[Content_Types].xml'] = arquivos['[Content_Types].xml'].replace('<Default Extension="xml"',
+    '<Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="xml"').replace('</Types>', extras.join('') + '</Types>');
   return zipar(arquivos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
@@ -313,4 +331,13 @@ async function lerPDFTabela(arquivo) {
     for (let j = 0; j < r.length; j++) if (r[j] === undefined) r[j] = null;
     return r;
   });
+}
+
+// "data:image/png;base64,..." → { ext, bytes } (somente PNG e JPEG)
+function imagemDeDataURL(url) {
+  const m = /^data:image\/(png|jpe?g);base64,(.*)$/i.exec(url || '');
+  if (!m) return null;
+  const bin = atob(m[2]), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { ext: m[1].toLowerCase() === 'png' ? 'png' : 'jpeg', bytes };
 }

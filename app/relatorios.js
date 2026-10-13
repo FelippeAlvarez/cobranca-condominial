@@ -196,7 +196,9 @@ function folhaIndicesXLSX(p) {
 
 function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   const p = r.p;
-  const L = [...cabecalhoXLSX(), [{ v: 'Planilha de débito', s: 'tit' }], ...linhasInfo(cob).map(t => [t]), null];
+  const mesclar = [];
+  const LARG = [13, 30, 12, 15, 12, 15, 9, 13, 13, 15], cab = cabecalhoXLSX(LARG);
+  const L = [...cab.linhas, [{ v: 'Planilha de débito', s: 'tit' }], ...linhasInfo(cob).map(t => [t]), null];
   const param = (rotulo, valor) => { L.push([{ v: rotulo, s: 'b' }, null, null, valor]); return '$D$' + L.length; };
   const DATA = param('Data do cálculo', { v: r.dataCalc, s: 'd' });
   param('Correção monetária', descIndice(p));
@@ -255,8 +257,8 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   [descCriterios(r), ...notasCalculo(r),
     'Para incluir meses ou despesas, preencha as linhas em branco das tabelas (para as cotas: competência, descrição, vencimento e valor originário). A correção, os juros e a multa são calculados e somados aos totais. Para mais linhas, insira-as antes da última linha em branco e copie as fórmulas da linha de cima.',
     'Alterando a data do cálculo ou os percentuais, todos os valores são recalculados, inclusive os fatores de correção (índices na folha "Índices").']
-    .forEach(n => L.push([n]));
-  return { nome: nomeFolha, linhas: L, larguras: [13, 30, 12, 15, 12, 15, 9, 13, 13, 15], refs: { original: 'D' + nt, debito: refDeb, hon: refHon, desp: refDesp, total: refTotal } };
+    .forEach(n => { L.push({ c: [{ v: n, s: 'tq' }], altura: Math.ceil(n.length / 150) * 13 + 2 }); mesclar.push(`A${L.length}:J${L.length}`); });
+  return { nome: nomeFolha, linhas: L, larguras: LARG, imagem: cab.imagem, mesclar, refs: { original: 'D' + nt, debito: refDeb, hon: refHon, desp: refDesp, total: refTotal } };
 }
 
 function nomeFolhaUnico(base, usados) {
@@ -274,7 +276,8 @@ function gerarXLSXCobrancas({ titulo, linhasTitulo = [], cobs, dataCalc }) {
   const folhas = itens.map(({ cob, r }) => folhaCobrancaXLSX(cob, r, nomeFolhaUnico(cob.unidade || 'Unidade', usados), idx?.ultLinha));
   const fimIdx = idx ? [idx.folha] : [];
   if (itens.length === 1) return gerarXLSX([...folhas, ...fimIdx]);
-  const L = [...cabecalhoXLSX(), [{ v: titulo, s: 'tit' }], ...linhasTitulo.map(t => [Array.isArray(t) ? t[0] : t]), [`Valores atualizados até ${fmtData(dataCalc)}.`], null];
+  const LARG = [30, 18, 34, 22, 15, 15, 15, 13, 15, 15], cab = cabecalhoXLSX(LARG);
+  const L = [...cab.linhas, [{ v: titulo, s: 'tit' }], ...linhasTitulo.map(t => [Array.isArray(t) ? t[0] : t]), [`Valores atualizados até ${fmtData(dataCalc)}.`], null];
   L.push({ c: ['Condomínio', 'Unidade', 'Devedor(es)', 'Cobrança', 'Valor originário', 'Débito atualizado', 'Honorários contratuais', 'Despesas', 'Honorários sucumbenciais', 'Total'].map(v => ({ v, s: 'cab' })), altura: 30 });
   const ini = L.length + 1;
   const ref = (f, cel) => cel ? `'${f.nome.replace(/'/g, "''")}'!${cel}` : null;
@@ -291,18 +294,31 @@ function gerarXLSXCobrancas({ titulo, linhasTitulo = [], cobs, dataCalc }) {
   const vz = { v: '', s: 'bt' };
   L.push([{ v: 'Totais', s: 'bt' }, vz, vz, vz, ...[totais.original, totais.debito, totais.hon, totais.desp, totais.suc, totais.total].map((v, j) => ({ f: `SUM(${LETRAS[4 + j]}${ini}:${LETRAS[4 + j]}${fim})`, v, s: 'mt' }))]);
   L.push(null, ['O detalhamento de cada cobrança está nas folhas seguintes.']);
-  return gerarXLSX([{ nome: 'Resumo', linhas: L, larguras: [30, 18, 34, 22, 15, 15, 15, 13, 15, 15], congelar: ini - 1 }, ...folhas, ...fimIdx]);
+  return gerarXLSX([{ nome: 'Resumo', linhas: L, larguras: LARG, imagem: cab.imagem, congelar: ini - 1 }, ...folhas, ...fimIdx]);
 }
 
-// Dados do escritório no topo das planilhas
-function cabecalhoXLSX() {
+// Logotipo no canto esquerdo das planilhas: tamanho em pixels e coluna onde começa o texto do cabeçalho
+function logoXLSX(larguras) {
   const a = D.config.escritorio || {};
-  if (!a.nome) return [];
-  return [
-    [{ v: a.nome, s: 'b' }],
-    ...[[a.documento, a.oab].filter(Boolean).join('  ·  '), a.endereco, [a.telefone, a.email, a.site].filter(Boolean).join('  ·  ')].filter(Boolean).map(t => [t]),
-    null,
-  ];
+  if (!a.logo || !a.logoL || !a.logoA) return null;
+  let h = 64, w = Math.round(h * a.logoL / a.logoA);
+  if (w > 190) { w = 190; h = Math.round(w * a.logoA / a.logoL); }
+  let col = 0, x = 0;
+  while (x < w + 12 && col < larguras.length) x += Math.round((larguras[col++] || 9) * 7 + 5);
+  return { imagem: { dados: a.logo, w, h }, col, linhas: Math.ceil((h + 8) / 17) };
+}
+
+// Dados do escritório no topo das planilhas (à direita do logotipo, se houver)
+function cabecalhoXLSX(larguras = []) {
+  const a = D.config.escritorio || {};
+  const logo = logoXLSX(larguras);
+  const textos = a.nome ? [{ v: a.nome, s: 'b' }, ...[[a.documento, a.oab].filter(Boolean).join('  ·  '), a.endereco, [a.telefone, a.email, a.site].filter(Boolean).join('  ·  ')].filter(Boolean)] : [];
+  if (!textos.length && !logo) return { linhas: [], imagem: null };
+  const pre = Array(logo ? logo.col : 0).fill(null);
+  const linhas = textos.map(t => [...pre, t]);
+  while (logo && linhas.length < logo.linhas) linhas.push([]);
+  linhas.push(null);
+  return { linhas, imagem: logo?.imagem || null };
 }
 
 /* ================= Agrupamentos ================= */
