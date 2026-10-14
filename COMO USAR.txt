@@ -12,6 +12,14 @@ MAIS SIMPLES: abra no Chrome ou no Edge o endereço
    (crie um favorito), crie a pasta de dados (item "b") e siga a partir do item "e". Assim todos usam sempre a
    versão mais recente, sem copiar arquivos. Os dados continuam só na pasta do Dropbox.
 
+INSTALAR COMO APLICATIVO (ícone próprio e janela própria, sem barra de endereço):
+- Computador (Chrome ou Edge): abra o endereço e clique em "Instalar o aplicativo"
+  (na tela inicial ou no menu do programa), ou no ícone de instalar da barra de endereço.
+- Android (Chrome): menu ⋮ > "Instalar app" (ou o botão "Instalar o aplicativo").
+- iPhone/iPad (Safari): Compartilhar > "Adicionar à Tela de Início".
+No celular, o navegador não permite acessar a pasta do Dropbox: lá o programa só
+funciona com dados guardados no próprio aparelho. Para os dados da equipe, use o computador.
+
 OU, para usar como arquivo:
 a) Copie esta pasta inteira ("cobranca-condominial") para o Dropbox, por exemplo:
       Dropbox\Cobrança Condominial\programa
