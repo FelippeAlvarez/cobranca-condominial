@@ -5,35 +5,45 @@ Planilhas de cobrança judicial e extrajudicial de cotas condominiais em atraso.
 Não precisa instalar nada: o programa abre no Google Chrome ou no Microsoft Edge.
 
 
-1. INSTALAÇÃO (equipe compartilhando o Dropbox)
------------------------------------------------
-MAIS SIMPLES: abra no Chrome ou no Edge o endereço
-      https://felippealvarez.github.io/cobranca-condominial/
-   (crie um favorito), crie a pasta de dados (item "b") e siga a partir do item "e". Assim todos usam sempre a
-   versão mais recente, sem copiar arquivos. Os dados continuam só na pasta do Dropbox.
+1. ACESSO E INSTALAÇÃO
+----------------------
+Endereço do programa: https://felippealvarez.github.io/cobranca-condominial/
+Os dados ficam no Dropbox da ASA, na pasta:
+      ASA Advocacia > ASA - PROCESSOS > COBRANÇA CONDOMINIAL
+O programa só lê e grava dentro dessa pasta.
+
+ADMINISTRADOR (uma vez só):
+a) Abra o endereço, clique em "Conectar ao Dropbox" e autorize com a conta da ASA.
+b) Na tela "Primeiro acesso", crie o administrador (nome, login e senha).
+c) Em Usuários > "Novo usuário", cadastre cada pessoa da equipe. O programa gera uma
+   senha provisória e uma mensagem pronta para enviar por WhatsApp ou e-mail.
+d) No Dropbox, compartilhe a pasta COBRANÇA CONDOMINIAL com quem ainda não tem acesso.
+
+DEMAIS USUÁRIOS (seguem a mensagem recebida):
+1) Abrem o endereço no computador ou no celular e, se quiserem, instalam o aplicativo.
+2) Clicam em "Conectar ao Dropbox" e entram com a PRÓPRIA conta do Dropbox da ASA.
+3) Entram com o login e a senha provisória e criam a senha pessoal.
+Ninguém precisa escolher pasta: a base é sempre a mesma para toda a equipe.
+
+PERFIS:
+- Administrador: tudo, inclusive Configurações, Usuários e excluir condomínios e cobranças.
+- Usuário: cadastra e edita condomínios e cobranças e gera planilhas; troca a própria
+  senha em "Minha conta".
+- Senha esquecida: o administrador gera uma nova senha provisória em Usuários.
+- Bloquear o acesso: desmarque "Acesso ativo" no usuário.
+Atenção: o login controla o uso dentro do programa. Quem tiver acesso direto à pasta no
+Dropbox consegue abrir os arquivos fora dele; compartilhe a pasta só com a equipe.
 
 INSTALAR COMO APLICATIVO (ícone próprio e janela própria, sem barra de endereço):
-- Computador (Chrome ou Edge): abra o endereço e clique em "Instalar o aplicativo"
-  (na tela inicial ou no menu do programa), ou no ícone de instalar da barra de endereço.
-- Android (Chrome): menu ⋮ > "Instalar app" (ou o botão "Instalar o aplicativo").
+- Computador (Chrome ou Edge): botão "Instalar o aplicativo" ou o ícone de instalar
+  na barra de endereço.
+- Android (Chrome): menu ⋮ > "Instalar app".
 - iPhone/iPad (Safari): Compartilhar > "Adicionar à Tela de Início".
-No celular, o navegador não permite acessar a pasta do Dropbox: lá o programa só
-funciona com dados guardados no próprio aparelho. Para os dados da equipe, use o computador.
 
-OU, para usar como arquivo:
-a) Copie esta pasta inteira ("cobranca-condominial") para o Dropbox, por exemplo:
-      Dropbox\Cobrança Condominial\programa
-b) Crie, também no Dropbox, uma pasta vazia para os dados:
-      Dropbox\Cobrança Condominial\dados
-c) Compartilhe a pasta "Cobrança Condominial" com as pessoas da equipe.
-
-Em cada computador:
-d) Abra o arquivo "Abrir Cobranca Condominial.html" com o Chrome ou o Edge
-   (botão direito > Abrir com). Dica: crie um favorito na barra do navegador.
-e) Clique em "Escolher pasta…" e escolha a pasta "dados" do Dropbox.
-   Informe o seu nome: ele fica registrado em cada alteração.
-f) Nas próximas vezes, clique em "Abrir". O navegador pode pedir de novo a
-   permissão para a pasta. Escolha "Permitir em todas as visitas", se aparecer.
+OUTRAS FORMAS DE ACESSO (na tela inicial, em "Outras formas de acesso"):
+- Pasta do computador: abre a pasta sincronizada do Dropbox no Chrome ou Edge do
+  computador (útil sem internet). Usa os mesmos usuários e senhas.
+- Testar sem pasta: dados só no navegador, para testes.
 
 Como os dados ficam gravados:
 - cada condomínio e cada cobrança é um arquivo separado (pastas "condominios" e
