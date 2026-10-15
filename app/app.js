@@ -1,7 +1,7 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.0.0';
+const VERSAO = '1.1.0';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, carregadoEm: 0 };
@@ -19,7 +19,7 @@ function normalizarConfig(c) {
   return c;
 }
 
-const usuarioLocal = () => localStorage.getItem('cc-usuario') || '';
+const usuarioLocal = () => Auth.usuario?.nome || localStorage.getItem('cc-usuario') || '';
 
 async function lerJSON(caminho, padrao) {
   const t = await Armaz.ler(caminho);
@@ -30,11 +30,16 @@ async function lerJSON(caminho, padrao) {
 async function carregarColecao(col) {
   const nomes = await Armaz.listar(col);
   const mapa = {};
-  await Promise.all(nomes.map(async n => {
-    try {
-      const reg = JSON.parse(await Armaz.ler(`${col}/${n}`));
-      if (reg?.id) mapa[reg.id] = reg;
-    } catch (e) { console.warn('Arquivo ignorado', col, n, e); }
+  // No máximo 8 leituras ao mesmo tempo (no Dropbox, só baixa o que mudou desde a última leitura)
+  const fila = [...nomes];
+  await Promise.all(Array.from({ length: Math.min(8, fila.length) }, async () => {
+    while (fila.length) {
+      const n = fila.shift();
+      try {
+        const reg = JSON.parse(await Armaz.ler(`${col}/${n}`));
+        if (reg?.id) mapa[reg.id] = reg;
+      } catch (e) { console.warn('Arquivo ignorado', col, n, e); }
+    }
   }));
   return mapa;
 }
@@ -121,7 +126,8 @@ async function rotear() {
   const tela = {
     inicio: telaInicio, condominios: telaCondominios, condominio: () => telaCondominio(arg?.split('?')[0]),
     cobranca: () => telaCobranca(arg?.split('?')[0], params), devedores: telaDevedores, imoveis: telaImoveis,
-    relatorios: () => telaRelatorios(params), config: telaConfig,
+    relatorios: () => telaRelatorios(params), config: () => Auth.ehAdmin() ? telaConfig() : telaConta(), conta: telaConta,
+    usuarios: () => Auth.ehAdmin() ? telaUsuarios() : telaConta(),
   }[rota] || telaInicio;
   await executar(tela);
 }
@@ -236,7 +242,7 @@ function telaCondominio(id) {
       <h3 class="sec" style="margin-top:16px">Encargos e honorários deste condomínio</h3>
       <p class="dica">Conforme a convenção e o contrato de honorários com este cliente. Em branco, valem os padrões das Configurações. Cada cobrança ainda pode ter critérios próprios.</p>
       <div id="encCond">${camposEncargosHTML(c.padroes, herd, 'padrão')}</div>
-      <div class="barra-form"><button class="bt primario">Salvar</button>${novo ? '' : '<button type="button" class="bt perigo" id="btExcluir">Excluir</button>'}</div>
+      <div class="barra-form"><button class="bt primario">Salvar</button>${novo || !Auth.ehAdmin() ? '' : '<button type="button" class="bt perigo" id="btExcluir">Excluir</button>'}</div>
     </form>
     ${novo ? '' : `<div class="cartao"><div class="cartao-cab"><h2>Cobranças (${cobs.length})</h2><div class="acoes">
       <a class="bt primario" href="#/cobranca/nova?cond=${c.id}">Nova cobrança</a><button class="bt" id="btLote">Importar planilha (Excel ou PDF)</button></div></div>
@@ -348,7 +354,7 @@ function telaCobranca(id, params) {
     <div class="acoes-linha"><button class="bt" id="expVer">Visualizar PDF</button><button class="bt" id="expPdf">Salvar PDF</button><button class="bt" id="expXlsx">Salvar Excel</button></div>
   </div>
 
-  <div class="barra-salvar"><span id="estadoSalvar"></span>${nova ? '' : '<button class="bt perigo" id="btExcluir">Excluir</button><button class="bt" id="btDuplicar">Duplicar</button>'}<button class="bt primario" id="btSalvar">Salvar</button></div>`;
+  <div class="barra-salvar"><span id="estadoSalvar"></span>${nova ? '' : (Auth.ehAdmin() ? '<button class="bt perigo" id="btExcluir">Excluir</button>' : '') + '<button class="bt" id="btDuplicar">Duplicar</button>'}<button class="bt primario" id="btSalvar">Salvar</button></div>`;
 
   // ---- Dados gerais
   const alterado = () => { marcarSujo(); recalcularLogo(); };
@@ -642,10 +648,9 @@ function telaConfig() {
     <div class="barra-form"><button class="bt primario">Salvar configurações</button></div>
   </form>
   ${secaoIndicesHTML()}
-  <div class="cartao"><h2>Este computador</h2>
-    <div class="grade-form"><div class="campo w2"><label>Seu nome (registrado em cada alteração)</label><input id="nomeUsu" value="${esc(usuarioLocal())}"></div></div>
-    <dl class="dados" style="margin-top:12px"><div><dt>Dados</dt><dd>${esc(Armaz.descricao())}</dd></div><div><dt>Versão</dt><dd>${VERSAO}</dd></div></dl>
-    <div class="acoes-linha"><button class="bt" id="btNomeUsu">Gravar nome</button><button class="bt" id="btTrocar">Trocar a pasta dos dados</button></div></div>`;
+  <div class="cartao"><h2>Base de dados</h2>
+    <dl class="dados"><div><dt>Local</dt><dd>${esc(Armaz.descricao())}</dd></div><div><dt>Versão</dt><dd>${VERSAO}</dd></div></dl>
+    <div class="acoes-linha"><a class="bt" href="#/usuarios">Usuários e convites</a><a class="bt" href="#/conta">Minha conta</a></div></div>`;
   ligarIndices();
   let logo = { logo: e.logo, logoL: e.logoL, logoA: e.logoA };
   $('#fEsc').addEventListener('input', marcarSujo);
@@ -683,58 +688,226 @@ function telaConfig() {
     aviso('Configurações salvas.');
     telaConfig();
   }); });
-  $('#btNomeUsu').addEventListener('click', () => { localStorage.setItem('cc-usuario', $('#nomeUsu').value.trim()); aviso('Nome gravado neste computador.'); });
-  $('#btTrocar').addEventListener('click', () => executar(async () => {
-    if (sujo && !confirm('Há alterações não salvas. Continuar?')) return;
-    sujo = false;
-    Armaz.desconectar();
-    document.body.classList.remove('conectado');
-    telaConexao();
-  }));
 }
 
-/* ================= Conexão (pasta dos dados) ================= */
-async function telaConexao() {
-  document.body.classList.remove('conectado');
+/* ================= Conexão com a base de dados ================= */
+const LINK_APP = 'https://felippealvarez.github.io/cobranca-condominial/';
+
+async function telaConexao(erro) {
+  document.body.classList.remove('conectado', 'admin');
   $('#statusArmaz').textContent = '';
+  $('#usuarioTopo').innerHTML = '';
   const salva = localStorage.getItem('cc-modo') === 'pasta' ? await Armaz.nomePastaSalva() : '';
   const suporta = 'showDirectoryPicker' in window;
   $('#conteudo').innerHTML = `<div class="boas-vindas"><h1>Cobrança Condominial</h1>
     <p class="dica">Planilhas de cobrança judicial e extrajudicial de cotas condominiais em atraso.</p></div>
-    ${suporta ? '' : ehCelular()
-      ? '<p class="alerta">No celular, o navegador não permite acessar a pasta do Dropbox. Para trabalhar com os dados da equipe, use o computador (Chrome ou Edge). No celular, é possível testar o programa com dados guardados só neste aparelho.</p>'
-      : '<p class="alerta">Este navegador não permite gravar numa pasta. Abra o programa no Google Chrome ou no Microsoft Edge.</p>'}
+    ${erro ? `<p class="alerta">${esc(erro)}</p>` : ''}
+    <div class="cartao destaque caixa-login">
+      <h2>Entrar</h2>
+      <p>Conecte o Dropbox da ASA (use a sua própria conta do Dropbox da equipe). Depois, entre com o login e a senha recebidos do administrador.</p>
+      <button class="bt primario" id="btDropbox">Conectar ao Dropbox</button>
+      <p class="dica" style="margin-top:10px">O programa usa somente a pasta ASA Advocacia &gt; ASA - PROCESSOS &gt; COBRANÇA CONDOMINIAL. Funciona no computador e no celular.</p>
+    </div>
     <p id="avisoInstalar" hidden><button class="bt" id="btInstalar2">Instalar o aplicativo neste aparelho</button></p>
-    <div class="opcoes-conexao">
-      ${salva ? `<div class="cartao destaque"><h2>Continuar</h2><p>Pasta dos dados: <b>${esc(salva)}</b></p><button class="bt primario" id="btRetomar">Abrir</button></div>` : ''}
-      <div class="cartao"><h2>${salva ? 'Escolher outra pasta' : 'Escolher a pasta dos dados'}</h2>
-        <p class="dica">Para trabalhar em equipe, escolha uma pasta do <b>Dropbox</b> compartilhada com todos (ex.: <i>Dropbox\\Cobrança Condominial\\dados</i>). Cada pessoa abre o programa no próprio computador e escolhe a mesma pasta.</p>
-        <button class="bt ${salva ? '' : 'primario'}" id="btPasta" ${suporta ? '' : 'disabled'}>Escolher pasta…</button></div>
-      <div class="cartao"><h2>Apenas testar</h2><p class="dica">Os dados ficam só neste navegador. Não use para o trabalho real.</p><button class="bt" id="btLocal">Testar sem pasta</button></div>
-    </div>`;
-  const entrar = async () => {
-    if (!usuarioLocal()) {
-      const n = prompt('Seu nome (fica registrado em cada alteração que você fizer):', '');
-      if (n) localStorage.setItem('cc-usuario', n.trim());
-    }
-    await conectado();
-  };
+    <details class="detalhes"><summary>Outras formas de acesso</summary>
+      <div class="opcoes-conexao">
+        ${suporta ? `<div class="cartao"><h2>Pasta do computador</h2>
+          <p class="dica">Abre a pasta sincronizada do Dropbox no próprio computador (Chrome ou Edge). Útil sem internet.</p>
+          ${salva ? `<button class="bt" id="btRetomar">Abrir "${esc(salva)}"</button> ` : ''}<button class="bt" id="btPasta">Escolher pasta…</button></div>` : ''}
+        <div class="cartao"><h2>Apenas testar</h2><p class="dica">Os dados ficam só neste navegador. Não use para o trabalho real.</p><button class="bt" id="btLocal">Testar sem pasta</button></div>
+      </div>
+    </details>`;
+  $('#btDropbox').addEventListener('click', () => executar(() => DBX.entrar()));
   $('#btRetomar')?.addEventListener('click', () => executar(async () => {
     if (!await Armaz.retomarPasta(true)) throw new Error('Sem permissão para a pasta. Escolha a pasta novamente.');
-    await entrar();
+    await conectado();
   }));
-  $('#btPasta').addEventListener('click', () => executar(async () => { await Armaz.conectarPasta(); await entrar(); }));
-  $('#btLocal').addEventListener('click', () => executar(async () => { Armaz.usarLocal(); await entrar(); }));
+  $('#btPasta')?.addEventListener('click', () => executar(async () => { await Armaz.conectarPasta(); await conectado(); }));
+  $('#btLocal').addEventListener('click', () => executar(async () => { Armaz.usarLocal(); await conectado(); }));
   atualizarBotoesInstalar();
 }
 
+// Base acessível: confere o login (ou cria o primeiro administrador) e carrega os dados
 async function conectado() {
+  $('#conteudo').innerHTML = '<p class="carregando">Abrindo a base de dados…</p>';
+  if (!await Auth.temUsuarios()) return telaPrimeiroAdmin();
+  const s = await Auth.retomar();
+  if (!s) return telaLogin();
+  if (s.trocarSenha) return telaTrocarSenha(true);
+  await abrirBase();
+}
+
+async function abrirBase() {
   $('#conteudo').innerHTML = '<p class="carregando">Lendo os dados…</p>';
   await recarregarTudo();
   document.body.classList.add('conectado');
-  $('#statusArmaz').textContent = Armaz.descricao() + (usuarioLocal() ? ' · ' + usuarioLocal() : '');
+  document.body.classList.toggle('admin', Auth.ehAdmin());
+  $('#statusArmaz').textContent = Armaz.descricao();
+  $('#usuarioTopo').innerHTML = `<a href="#/conta">${esc(Auth.usuario.nome)}</a>${Auth.ehAdmin() ? '<span class="chip neutro">Administrador</span>' : ''}<button class="bt-sair" id="btSair">Sair</button>`;
+  $('#btSair').addEventListener('click', () => {
+    if (sujo && !confirm('Há alterações não salvas. Sair assim mesmo?')) return;
+    sujo = false;
+    Auth.sair();
+    document.body.classList.remove('conectado', 'admin');
+    $('#usuarioTopo').innerHTML = '';
+    telaLogin();
+  });
   $('#rodapeMenu').innerHTML = `Versão ${VERSAO}`;
   rotear();
+}
+
+function telaLogin() {
+  document.body.classList.remove('conectado', 'admin');
+  $('#conteudo').innerHTML = `<form class="cartao caixa-login" id="fLogin" autocomplete="on">
+    <h1>Cobrança Condominial</h1>
+    <p class="dica">${esc(Armaz.descricao())}${Armaz.modo === 'dropbox' && DBX.conta ? ' · ' + esc(DBX.conta) : ''}</p>
+    <div class="grade-login">
+      <div class="campo"><label for="lgLogin">Login</label><input id="lgLogin" autocomplete="username" autocapitalize="none" required></div>
+      <div class="campo"><label for="lgSenha">Senha</label><input id="lgSenha" type="password" autocomplete="current-password" required></div>
+      <label class="inline"><input type="checkbox" id="lgLembrar" checked> Manter conectado neste aparelho</label>
+      <button class="bt primario">Entrar</button>
+    </div>
+    <p class="dica" style="margin-top:14px">Esqueceu a senha? Peça ao administrador uma senha provisória.</p>
+    <p style="margin-top:6px"><a href="#" id="lgTrocarBase">Usar outra conta do Dropbox ou outra forma de acesso</a></p>
+  </form>`;
+  $('#lgLogin').focus();
+  $('#fLogin').addEventListener('submit', e => { e.preventDefault(); executar(async () => {
+    const r = await Auth.entrar($('#lgLogin').value, $('#lgSenha').value, $('#lgLembrar').checked);
+    if (r.trocarSenha) return telaTrocarSenha(true);
+    await abrirBase();
+  }); });
+  $('#lgTrocarBase').addEventListener('click', e => { e.preventDefault(); desconectarBase(); });
+}
+
+function desconectarBase() {
+  Auth.sair();
+  if (Armaz.modo === 'dropbox') DBX.sair();
+  Armaz.desconectar();
+  telaConexao();
+}
+
+function telaPrimeiroAdmin() {
+  document.body.classList.remove('conectado', 'admin');
+  $('#conteudo').innerHTML = `<form class="cartao caixa-login" id="fAdm" autocomplete="off">
+    <h1>Primeiro acesso</h1>
+    <p>Esta base ainda não tem usuários. Crie o <b>administrador</b>: ele cadastra os demais usuários e altera as configurações.</p>
+    <p class="dica">${esc(Armaz.descricao())}${Armaz.modo === 'dropbox' && DBX.conta ? ' · ' + esc(DBX.conta) : ''}</p>
+    <div class="grade-login">
+      <div class="campo"><label>Nome</label><input id="adNome" required></div>
+      <div class="campo"><label>Login</label><input id="adLogin" autocapitalize="none" placeholder="ex.: felippe" required></div>
+      <div class="campo"><label>Senha (mínimo 6 caracteres)</label><input id="adSenha" type="password" autocomplete="new-password" required></div>
+      <div class="campo"><label>Repita a senha</label><input id="adSenha2" type="password" autocomplete="new-password" required></div>
+      <button class="bt primario">Criar administrador e entrar</button>
+    </div>
+    <p style="margin-top:12px"><a href="#" id="adVoltar">Voltar</a></p>
+  </form>`;
+  $('#fAdm').addEventListener('submit', e => { e.preventDefault(); executar(async () => {
+    if ($('#adSenha').value !== $('#adSenha2').value) throw new Error('As senhas não conferem.');
+    await Auth.criarPrimeiroAdmin({ login: $('#adLogin').value, nome: $('#adNome').value, senha: $('#adSenha').value });
+    aviso('Administrador criado.');
+    await abrirBase();
+  }); });
+  $('#adVoltar').addEventListener('click', e => { e.preventDefault(); desconectarBase(); });
+}
+
+function telaTrocarSenha(obrigatoria) {
+  if (obrigatoria) document.body.classList.remove('conectado', 'admin');
+  const html = `<form class="cartao caixa-login" id="fSenha" autocomplete="off">
+    <h${obrigatoria ? 1 : 2}>${obrigatoria ? 'Crie a sua senha' : 'Trocar a senha'}</h${obrigatoria ? 1 : 2}>
+    ${obrigatoria ? '<p>Você entrou com uma senha provisória. Escolha uma senha pessoal para continuar.</p>' : ''}
+    <div class="grade-login">
+      <div class="campo"><label>Senha atual${obrigatoria ? ' (provisória)' : ''}</label><input id="tsAtual" type="password" autocomplete="current-password" required></div>
+      <div class="campo"><label>Nova senha (mínimo 6 caracteres)</label><input id="tsNova" type="password" autocomplete="new-password" required></div>
+      <div class="campo"><label>Repita a nova senha</label><input id="tsNova2" type="password" autocomplete="new-password" required></div>
+      <button class="bt primario">Gravar a nova senha</button>
+    </div></form>`;
+  if (obrigatoria) $('#conteudo').innerHTML = html; else $('#areaSenha').innerHTML = html;
+  $('#fSenha').addEventListener('submit', e => { e.preventDefault(); executar(async () => {
+    if ($('#tsNova').value !== $('#tsNova2').value) throw new Error('As senhas não conferem.');
+    await Auth.trocarSenha($('#tsAtual').value, $('#tsNova').value);
+    aviso('Senha alterada.');
+    if (obrigatoria) await abrirBase(); else telaConta();
+  }); });
+}
+
+function telaConta() {
+  $('#conteudo').innerHTML = cabecalho('Minha conta') + `
+    <div class="cartao"><dl class="dados">
+      <div><dt>Nome</dt><dd>${esc(Auth.usuario.nome)}</dd></div><div><dt>Login</dt><dd>${esc(Auth.usuario.login)}</dd></div>
+      <div><dt>Perfil</dt><dd>${Auth.ehAdmin() ? 'Administrador' : 'Usuário'}</dd></div>
+      <div><dt>Base de dados</dt><dd>${esc(Armaz.descricao())}</dd></div>
+      ${Armaz.modo === 'dropbox' ? `<div><dt>Conta do Dropbox neste aparelho</dt><dd>${esc(DBX.conta)}</dd></div>` : ''}
+      <div><dt>Versão do programa</dt><dd>${VERSAO}</dd></div></dl>
+      <div class="acoes-linha"><button class="bt" id="btSenha">Trocar a senha</button><button class="bt" id="btDesconectar">Desconectar este aparelho</button></div>
+      <p class="dica" style="margin-top:8px">"Desconectar este aparelho" sai do login e da conta do Dropbox neste aparelho (útil em computador compartilhado).</p></div>
+    <div id="areaSenha"></div>`;
+  $('#btSenha').addEventListener('click', () => telaTrocarSenha(false));
+  $('#btDesconectar').addEventListener('click', () => {
+    if (!confirm('Desconectar este aparelho? Será preciso conectar o Dropbox e entrar de novo.')) return;
+    sujo = false;
+    desconectarBase();
+  });
+}
+
+/* ================= Usuários (administrador) ================= */
+async function telaUsuarios() {
+  const lista = await Auth.lista();
+  $('#conteudo').innerHTML = cabecalho('Usuários', 'Quem pode usar o programa. Só o administrador cadastra usuários e altera as configurações.', '<button class="bt primario" id="btNovoUsu">Novo usuário</button>') + `
+    <div class="cartao"><div class="rolagem"><table class="tabela clicavel"><thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Situação</th><th>Último acesso</th></tr></thead><tbody>
+      ${lista.map(u => `<tr data-login="${esc(u.login)}"><td>${esc(u.nome)}</td><td>${esc(u.login)}</td><td>${u.perfil === 'admin' ? 'Administrador' : 'Usuário'}</td>
+        <td>${u.ativo ? (u.trocarSenha ? '<span class="chip aberto">Senha provisória</span>' : '<span class="chip fechado">Ativo</span>') : '<span class="chip neutro">Sem acesso</span>'}</td>
+        <td>${u.ultimoAcesso ? new Date(u.ultimoAcesso).toLocaleString('pt-BR') : '—'}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="cartao"><h2>Como a pessoa passa a usar</h2><ol>
+      <li>No Dropbox, compartilhe com ela a pasta <b>ASA Advocacia &gt; ASA - PROCESSOS &gt; COBRANÇA CONDOMINIAL</b> (se ela ainda não tiver acesso).</li>
+      <li>Cadastre o usuário aqui. O programa gera uma senha provisória e a mensagem pronta para enviar (WhatsApp ou e-mail).</li>
+      <li>A pessoa abre o link, instala o app, conecta o Dropbox dela e entra com o login e a senha provisória. No primeiro acesso, ela cria a senha pessoal.</li></ol></div>`;
+  $('#btNovoUsu').addEventListener('click', () => formUsuario(null));
+  $$('tr[data-login]').forEach(tr => tr.addEventListener('click', () => formUsuario(lista.find(u => u.login === tr.dataset.login))));
+}
+
+function formUsuario(u) {
+  const novo = !u;
+  abrirModal(`<div class="modal-cab"><h2>${novo ? 'Novo usuário' : 'Editar usuário'}</h2><button class="bt-x" data-fechar>&times;</button></div>
+    <form id="fUsu" class="form-modal" autocomplete="off"><div class="grade-form">
+      <div class="campo w2"><label>Nome</label><input name="nome" value="${esc(u?.nome || '')}" required></div>
+      <div class="campo"><label>Login</label><input name="login" value="${esc(u?.login || '')}" ${novo ? '' : 'disabled'} autocapitalize="none" placeholder="ex.: maria.silva" required></div>
+      <div class="campo"><label>Perfil</label><select name="perfil"><option value="usuario">Usuário</option><option value="admin" ${u?.perfil === 'admin' ? 'selected' : ''}>Administrador</option></select></div>
+      ${novo ? '' : `<div class="campo w2"><label class="inline"><input type="checkbox" name="ativo" ${u.ativo ? 'checked' : ''}> Acesso ativo</label></div>
+        <div class="campo w2"><label class="inline"><input type="checkbox" name="redefinir"> Gerar nova senha provisória</label></div>`}
+    </div>
+    <p class="dica">${novo ? 'Uma senha provisória será gerada. A pessoa cria a senha pessoal no primeiro acesso.' : 'Desmarque "Acesso ativo" para bloquear a pessoa, sem apagar o histórico.'}</p>
+    <div class="barra-form"><button class="bt primario">${novo ? 'Cadastrar' : 'Salvar'}</button><button type="button" class="bt" data-fechar>Cancelar</button></div></form>`, 'modal-medio');
+  $('#fUsu').addEventListener('submit', e => { e.preventDefault(); executar(async () => {
+    const f = e.target, senha = novo || f.redefinir?.checked ? senhaProvisoria() : '';
+    const login = (novo ? f.login.value : u.login).trim().toLowerCase();
+    await Auth.salvarUsuario({ login, nome: f.nome.value, perfil: f.perfil.value, ativo: novo ? true : f.ativo.checked, senha }, novo);
+    if (senha) mostrarConvite(f.nome.value.trim(), login, senha); else { fecharModal(); aviso('Usuário salvo.'); telaUsuarios(); }
+  }); });
+}
+
+// Mensagem pronta para enviar à pessoa (o link não leva senha nem acesso ao Dropbox)
+function mostrarConvite(nome, login, senha) {
+  const msg = `Olá, ${nome.split(' ')[0]}! Seu acesso ao programa Cobrança Condominial da ASA:
+
+1. Abra no celular ou no computador (Chrome, Edge ou Safari): ${LINK_APP}
+2. Se quiser, instale: botão "Instalar o aplicativo" (no iPhone: Compartilhar > Adicionar à Tela de Início).
+3. Toque em "Conectar ao Dropbox" e entre com a SUA conta do Dropbox da ASA.
+4. Entre com o login: ${login}
+   Senha provisória: ${senha}
+5. No primeiro acesso, crie a sua senha pessoal.`;
+  abrirModal(`<div class="modal-cab"><h2>Mensagem para enviar</h2><button class="bt-x" data-fechar>&times;</button></div>
+    <p>Envie esta mensagem para <b>${esc(nome)}</b> (WhatsApp ou e-mail). A senha provisória aparece só agora; se perder, gere outra em Usuários.</p>
+    <textarea id="txConvite" rows="11" readonly>${esc(msg)}</textarea>
+    <div class="acoes-linha"><button class="bt primario" id="btCopiarConvite">Copiar mensagem</button>
+      <a class="bt" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">Abrir no WhatsApp</a>
+      <a class="bt" href="mailto:?subject=${encodeURIComponent('Acesso ao programa Cobrança Condominial')}&body=${encodeURIComponent(msg)}">Abrir no e-mail</a>
+      <button class="bt" data-fechar>Fechar</button></div>
+    <p class="dica">Lembre-se de compartilhar com a pessoa, no Dropbox, a pasta COBRANÇA CONDOMINIAL.</p>`, 'modal-medio');
+  $('#btCopiarConvite').addEventListener('click', () => executar(async () => {
+    try { await navigator.clipboard.writeText(msg); } catch { $('#txConvite').select(); document.execCommand('copy'); }
+    aviso('Mensagem copiada.');
+  }));
+  $('#modal').addEventListener('click', function fim(e) { if (e.target.closest('[data-fechar]')) { $('#modal').removeEventListener('click', fim); telaUsuarios(); } });
 }
 
 /* ================= Início ================= */
@@ -791,11 +964,24 @@ function prepararInstalacao() {
 async function iniciar() {
   eventosGlobais();
   prepararInstalacao();
+  // Volta do Dropbox depois de autorizar: ?code=...&state=cc-...
+  const q = new URLSearchParams(location.search);
+  if (q.get('state')?.startsWith('cc-') && (q.get('code') || q.get('error'))) {
+    history.replaceState(null, '', location.pathname + location.hash);
+    if (q.get('error')) return telaConexao('A conexão com o Dropbox foi cancelada.');
+    try {
+      $('#conteudo').innerHTML = '<p class="carregando">Conectando ao Dropbox…</p>';
+      await DBX.concluirEntrada(q.get('code'), q.get('state'));
+      Armaz.usarDropbox();
+      return await conectado();
+    } catch (e) { console.error(e); return telaConexao(e.message); }
+  }
   const modo = localStorage.getItem('cc-modo');
   try {
+    if (modo === 'dropbox' && DBX.temAcesso()) { Armaz.usarDropbox(); return await conectado(); }
     if (modo === 'local') { Armaz.usarLocal(); return await conectado(); }
     if (modo === 'pasta' && await Armaz.retomarPasta(false)) return await conectado();
-  } catch (e) { console.error(e); aviso(e.message, 'erro'); }
+  } catch (e) { console.error(e); return telaConexao(e.message); }
   telaConexao();
 }
 
