@@ -1,7 +1,7 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.1.0';
+const VERSAO = '1.1.1';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, carregadoEm: 0 };
@@ -840,7 +840,11 @@ function telaConta() {
       <div><dt>Versão do programa</dt><dd>${VERSAO}</dd></div></dl>
       <div class="acoes-linha"><button class="bt" id="btSenha">Trocar a senha</button><button class="bt" id="btDesconectar">Desconectar este aparelho</button></div>
       <p class="dica" style="margin-top:8px">"Desconectar este aparelho" sai do login e da conta do Dropbox neste aparelho (útil em computador compartilhado).</p></div>
-    <div id="areaSenha"></div>`;
+    <div id="areaSenha"></div>
+    <div class="cartao"><h2>Aplicativo neste aparelho</h2>
+      <div id="estadoInstalacao"></div>
+      <p class="dica" style="margin-top:8px">Instalado, o programa ganha ícone próprio e abre em janela própria, sem barra de endereço. No computador e no Android, a conexão com o Dropbox e o login deste navegador continuam valendo no aplicativo. Os dados da equipe ficam no Dropbox e aparecem em qualquer aparelho.</p></div>`;
+  atualizarBotoesInstalar();
   $('#btSenha').addEventListener('click', () => telaTrocarSenha(false));
   $('#btDesconectar').addEventListener('click', () => {
     if (!confirm('Desconectar este aparelho? Será preciso conectar o Dropbox e entrar de novo.')) return;
@@ -930,23 +934,46 @@ const ehIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.
 const instalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 let pedidoInstalacao = null;
 
+// O botão aparece sempre que o programa ainda não estiver aberto como aplicativo instalado
 function atualizarBotoesInstalar() {
-  const mostrar = !instalado() && (pedidoInstalacao || ehIOS());
-  [$('#btInstalar'), $('#avisoInstalar')].forEach(el => { if (el) el.hidden = !mostrar; });
+  const mostrar = !instalado();
+  [$('#btInstalar'), $('#avisoInstalar'), $('#btInstalarTopo')].forEach(el => { if (el) el.hidden = !mostrar; });
+  const st = $('#estadoInstalacao');
+  if (st) st.innerHTML = instalado()
+    ? '<span class="chip fechado">Aberto como aplicativo instalado</span>'
+    : '<button class="bt primario" id="btInstalar3">Instalar o aplicativo neste aparelho</button>';
+}
+
+// Ao instalar, a sessão deste navegador passa para o aplicativo (mesmo sem "Manter conectado")
+function levarSessaoParaApp() {
+  const s = sessionStorage.getItem('cc-sessao');
+  if (s && !localStorage.getItem('cc-sessao')) localStorage.setItem('cc-sessao', s);
 }
 
 async function instalarApp() {
   if (pedidoInstalacao) {
+    levarSessaoParaApp();
     pedidoInstalacao.prompt();
-    await pedidoInstalacao.userChoice.catch(() => null);
+    const r = await pedidoInstalacao.userChoice.catch(() => null);
+    if (r?.outcome !== 'accepted' && !Auth.usuario) localStorage.removeItem('cc-sessao');
     pedidoInstalacao = null;
     atualizarBotoesInstalar();
     return;
   }
-  abrirModal(`<div class="modal-cab"><h2>Instalar no iPhone ou iPad</h2><button class="bt-x" data-fechar>&times;</button></div>
-    <ol><li>Abra este endereço no <b>Safari</b>.</li><li>Toque no botão <b>Compartilhar</b> (quadrado com seta para cima).</li>
-    <li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol>
-    <p class="dica">O ícone "Cobrança" aparece na tela de início e o programa abre em tela cheia, como um aplicativo.</p>`, 'modal-medio');
+  // Sem o pedido automático do navegador: instruções conforme o aparelho
+  levarSessaoParaApp();
+  const edge = /Edg\//.test(navigator.userAgent), android = /Android/i.test(navigator.userAgent);
+  const passos = ehIOS()
+    ? `<ol><li>Abra este endereço no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta para cima).</li><li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol>
+       <p class="alerta">No iPhone e no iPad, o aplicativo instalado não compartilha o login com o Safari. Ao abri-lo pela primeira vez, toque em "Conectar ao Dropbox" e entre de novo. Os dados da equipe estão no Dropbox e aparecem normalmente.</p>`
+    : android
+      ? '<ol><li>Toque no menu <b>⋮</b> do Chrome (canto superior direito).</li><li>Escolha <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b> &gt; <b>Instalar</b>).</li></ol>'
+      : edge
+        ? '<ol><li>Clique no menu <b>…</b> do Edge (canto superior direito).</li><li>Escolha <b>Aplicativos</b> &gt; <b>Instalar este site como um aplicativo</b>.</li></ol><p class="dica">Ou clique no ícone de instalar que aparece no fim da barra de endereço.</p>'
+        : '<ol><li>Clique no ícone de instalar no fim da barra de endereço (monitor com seta) <b>ou</b> no menu <b>⋮</b> do Chrome.</li><li>No menu, escolha <b>Transmitir, salvar e compartilhar</b> &gt; <b>Instalar página como app</b>.</li></ol>';
+  abrirModal(`<div class="modal-cab"><h2>Instalar o aplicativo</h2><button class="bt-x" data-fechar>&times;</button></div>
+    ${passos}
+    <p class="dica">O ícone "Cobrança" aparece na área de trabalho ou na tela inicial, e o programa abre em janela própria. ${ehIOS() ? '' : 'A conexão com o Dropbox e o login deste navegador continuam valendo no aplicativo.'}</p>`, 'modal-medio');
 }
 
 function prepararInstalacao() {
@@ -954,9 +981,9 @@ function prepararInstalacao() {
     navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker', e));
   }
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedidoInstalacao = e; atualizarBotoesInstalar(); });
-  window.addEventListener('appinstalled', () => { pedidoInstalacao = null; atualizarBotoesInstalar(); aviso('Aplicativo instalado.'); });
+  window.addEventListener('appinstalled', () => { levarSessaoParaApp(); pedidoInstalacao = null; atualizarBotoesInstalar(); aviso('Aplicativo instalado. Ele já abre com a sua conexão e o seu login.'); });
   document.addEventListener('click', e => {
-    if (e.target.closest('#btInstalar, #btInstalar2')) { e.preventDefault(); executar(instalarApp); }
+    if (e.target.closest('#btInstalar, #btInstalar2, #btInstalar3, #btInstalarTopo')) { e.preventDefault(); executar(instalarApp); }
   });
   atualizarBotoesInstalar();
 }
