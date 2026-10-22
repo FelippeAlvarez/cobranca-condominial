@@ -3,7 +3,7 @@
   Busca primeiro na rede (para receber as atualizações na hora) e usa a cópia guardada se a rede falhar.
   Só guarda os arquivos do próprio app; os dados ficam na pasta escolhida e os índices vêm do Banco Central.
 */
-const CACHE = 'cobranca-condominial-v4';
+const CACHE = 'cobranca-condominial-v5';
 const ARQUIVOS = [
   './', './index.html', './estilo.css', './icone.svg', './manifest.webmanifest',
   './util.js', './armazenamento.js', './auth.js', './indices.js', './calculo.js', './xlsx.js', './pdf.js', './relatorios.js', './importar.js', './app.js',

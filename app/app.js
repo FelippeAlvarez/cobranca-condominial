@@ -1,7 +1,7 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.1.1';
+const VERSAO = '1.1.2';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, carregadoEm: 0 };
@@ -932,16 +932,21 @@ function eventosGlobais() {
 const ehCelular = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const ehIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const instalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-let pedidoInstalacao = null;
+let pedidoInstalacao = null, appJaInstalado = false;
 
 // O botão aparece sempre que o programa ainda não estiver aberto como aplicativo instalado
 function atualizarBotoesInstalar() {
   const mostrar = !instalado();
   [$('#btInstalar'), $('#avisoInstalar'), $('#btInstalarTopo')].forEach(el => { if (el) el.hidden = !mostrar; });
+  const rot = appJaInstalado && !pedidoInstalacao ? 'Abrir o aplicativo' : 'Instalar app';
+  if ($('#btInstalarTopo')) $('#btInstalarTopo').textContent = rot;
+  if ($('#btInstalar')) $('#btInstalar').textContent = appJaInstalado && !pedidoInstalacao ? 'Abrir o aplicativo instalado' : 'Instalar o aplicativo';
   const st = $('#estadoInstalacao');
   if (st) st.innerHTML = instalado()
     ? '<span class="chip fechado">Aberto como aplicativo instalado</span>'
-    : '<button class="bt primario" id="btInstalar3">Instalar o aplicativo neste aparelho</button>';
+    : appJaInstalado && !pedidoInstalacao
+      ? '<span class="chip fechado">Já instalado neste aparelho</span> <button class="bt" id="btInstalar3">Como abrir o aplicativo</button>'
+      : '<button class="bt primario" id="btInstalar3">Instalar o aplicativo neste aparelho</button>';
 }
 
 // Ao instalar, a sessão deste navegador passa para o aplicativo (mesmo sem "Manter conectado")
@@ -950,6 +955,10 @@ function levarSessaoParaApp() {
   if (s && !localStorage.getItem('cc-sessao')) localStorage.setItem('cc-sessao', s);
 }
 
+/*
+  O navegador só deixa o site instalar o aplicativo pelo pedido dele ("beforeinstallprompt").
+  Quando o navegador não oferece (app já instalado, oferta recusada antes, iPhone), mostramos o caminho pelo menu.
+*/
 async function instalarApp() {
   if (pedidoInstalacao) {
     levarSessaoParaApp();
@@ -960,27 +969,57 @@ async function instalarApp() {
     atualizarBotoesInstalar();
     return;
   }
-  // Sem o pedido automático do navegador: instruções conforme o aparelho
   levarSessaoParaApp();
   const edge = /Edg\//.test(navigator.userAgent), android = /Android/i.test(navigator.userAgent);
-  const passos = ehIOS()
-    ? `<ol><li>Abra este endereço no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta para cima).</li><li>Escolha <b>Adicionar à Tela de Início</b> e confirme.</li></ol>
-       <p class="alerta">No iPhone e no iPad, o aplicativo instalado não compartilha o login com o Safari. Ao abri-lo pela primeira vez, toque em "Conectar ao Dropbox" e entre de novo. Os dados da equipe estão no Dropbox e aparecem normalmente.</p>`
-    : android
-      ? '<ol><li>Toque no menu <b>⋮</b> do Chrome (canto superior direito).</li><li>Escolha <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b> &gt; <b>Instalar</b>).</li></ol>'
-      : edge
-        ? '<ol><li>Clique no menu <b>…</b> do Edge (canto superior direito).</li><li>Escolha <b>Aplicativos</b> &gt; <b>Instalar este site como um aplicativo</b>.</li></ol><p class="dica">Ou clique no ícone de instalar que aparece no fim da barra de endereço.</p>'
-        : '<ol><li>Clique no ícone de instalar no fim da barra de endereço (monitor com seta) <b>ou</b> no menu <b>⋮</b> do Chrome.</li><li>No menu, escolha <b>Transmitir, salvar e compartilhar</b> &gt; <b>Instalar página como app</b>.</li></ol>';
-  abrirModal(`<div class="modal-cab"><h2>Instalar o aplicativo</h2><button class="bt-x" data-fechar>&times;</button></div>
-    ${passos}
-    <p class="dica">O ícone "Cobrança" aparece na área de trabalho ou na tela inicial, e o programa abre em janela própria. ${ehIOS() ? '' : 'A conexão com o Dropbox e o login deste navegador continuam valendo no aplicativo.'}</p>`, 'modal-medio');
+  let titulo = 'Instalar o aplicativo', corpo;
+  if (appJaInstalado) {
+    titulo = 'O aplicativo já está instalado';
+    corpo = `<p>O aplicativo <b>Cobrança Condominial</b> já está instalado neste aparelho. Para abrir:</p>
+      <ul>${android ? '<li>Toque no ícone <b>Cobrança</b> na tela inicial do celular.</li>'
+        : `<li>Clique no ícone <b>Cobrança Condominial</b> na área de trabalho ou no menu Iniciar do Windows; <b>ou</b></li>
+           <li>clique no botão <b>Abrir no aplicativo</b> que aparece no fim da barra de endereço do ${edge ? 'Edge' : 'Chrome'} (ícone de janela com uma seta).</li>`}</ul>`;
+  } else if (ehIOS()) {
+    corpo = `<ol><li>Abra este endereço no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> (quadrado com seta para cima).</li><li>Escolha <b>Adicionar à Tela de Início</b> e toque em <b>Adicionar</b>.</li></ol>
+      <p class="alerta">No iPhone e no iPad, o aplicativo instalado não compartilha o login com o Safari. Ao abri-lo pela primeira vez, toque em "Conectar ao Dropbox" e entre de novo. Os dados da equipe estão no Dropbox e aparecem normalmente.</p>`;
+  } else {
+    corpo = `<p>O ${android ? 'Chrome' : edge ? 'Edge' : 'Chrome'} não ofereceu a instalação automática nesta página. Por segurança, o navegador só deixa instalar pelo próprio menu:</p>
+      ${android ? '<ol><li>Toque no menu <b>⋮</b> do Chrome (canto superior direito).</li><li>Escolha <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b> &gt; <b>Instalar</b>).</li></ol>'
+        : edge ? '<ol><li>Clique no menu <b>…</b> do Edge (canto superior direito).</li><li>Escolha <b>Aplicativos</b> &gt; <b>Instalar este site como um aplicativo</b>.</li></ol>'
+          : '<ol><li>Clique no menu <b>⋮</b> do Chrome (canto superior direito).</li><li>Escolha <b>Transmitir, salvar e compartilhar</b> &gt; <b>Instalar página como app…</b> e confirme em <b>Instalar</b>.</li></ol>'}
+      <p class="dica">Se no menu aparecer <b>Abrir no aplicativo Cobrança Condominial</b> em vez de "Instalar", o aplicativo já está instalado: basta abri-lo por ali ou pelo ícone na ${android ? 'tela inicial' : 'área de trabalho'}.
+      Se você recusou a instalação antes, o navegador pode deixar de oferecê-la sozinho por um tempo; pelo menu continua funcionando.</p>`;
+  }
+  abrirModal(`<div class="modal-cab"><h2>${titulo}</h2><button class="bt-x" data-fechar>&times;</button></div>
+    ${corpo}
+    ${appJaInstalado ? '' : `<p class="dica">Depois de instalado, o ícone "Cobrança" aparece na ${android || ehIOS() ? 'tela inicial' : 'área de trabalho'} e o programa abre em janela própria.${ehIOS() ? '' : ' A conexão com o Dropbox e o login deste navegador continuam valendo no aplicativo.'}</p>`}
+    <div class="acoes-linha"><button class="bt primario" data-fechar>Entendi</button>${appJaInstalado || ehIOS() ? '' : '<button class="bt" id="btTentarInstalar">Recarregar a página e tentar de novo</button>'}</div>`, 'modal-medio');
+  $('#btTentarInstalar')?.addEventListener('click', () => { sessionStorage.setItem('cc-tentar-instalar', '1'); location.reload(); });
 }
+
 
 function prepararInstalacao() {
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker', e));
   }
-  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); pedidoInstalacao = e; atualizarBotoesInstalar(); });
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault(); pedidoInstalacao = e; atualizarBotoesInstalar();
+    // Voltou de "Recarregar e tentar de novo": agora o navegador oferece; falta só o clique
+    if (sessionStorage.getItem('cc-tentar-instalar')) {
+      sessionStorage.removeItem('cc-tentar-instalar');
+      abrirModal(`<div class="modal-cab"><h2>Instalação disponível</h2><button class="bt-x" data-fechar>&times;</button></div>
+        <p>O navegador liberou a instalação. Clique em <b>Instalar agora</b> e confirme na janela do navegador.</p>
+        <div class="acoes-linha"><button class="bt primario" id="btInstalarAgora">Instalar agora</button><button class="bt" data-fechar>Agora não</button></div>`, 'modal-medio');
+      $('#btInstalarAgora').addEventListener('click', () => { fecharModal(); executar(instalarApp); });
+    }
+  });
+  // Tentou de novo e o navegador continuou sem oferecer: avisa que o caminho é o menu
+  if (sessionStorage.getItem('cc-tentar-instalar')) setTimeout(() => {
+    if (!sessionStorage.getItem('cc-tentar-instalar')) return;
+    sessionStorage.removeItem('cc-tentar-instalar');
+    if (!pedidoInstalacao) aviso(appJaInstalado ? 'O aplicativo já está instalado neste aparelho.' : 'O navegador continua sem oferecer a instalação. Use o caminho pelo menu do navegador.', 'erro');
+  }, 6000);
+  // Detecta se o aplicativo já está instalado neste aparelho (o navegador então não oferece instalar de novo)
+  navigator.getInstalledRelatedApps?.().then(l => { appJaInstalado = l.length > 0; atualizarBotoesInstalar(); }).catch(() => {});
   window.addEventListener('appinstalled', () => { levarSessaoParaApp(); pedidoInstalacao = null; atualizarBotoesInstalar(); aviso('Aplicativo instalado. Ele já abre com a sua conexão e o seu login.'); });
   document.addEventListener('click', e => {
     if (e.target.closest('#btInstalar, #btInstalar2, #btInstalar3, #btInstalarTopo')) { e.preventDefault(); executar(instalarApp); }

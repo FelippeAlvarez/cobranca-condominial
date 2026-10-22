@@ -6,6 +6,7 @@
   "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
+  "related_applications": [{ "platform": "webapp", "url": "https://felippealvarez.github.io/cobranca-condominial/app/manifest.webmanifest" }],
   "display": "standalone",
   "background_color": "#1f4e79",
   "theme_color": "#1f4e79",
