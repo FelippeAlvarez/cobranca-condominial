@@ -3,7 +3,7 @@
   Busca primeiro na rede (para receber as atualizações na hora) e usa a cópia guardada se a rede falhar.
   Só guarda os arquivos do próprio app; os dados ficam na pasta escolhida e os índices vêm do Banco Central.
 */
-const CACHE = 'cobranca-condominial-v3';
+const CACHE = 'cobranca-condominial-v4';
 const ARQUIVOS = [
   './', './index.html', './estilo.css', './icone.svg', './manifest.webmanifest',
   './util.js', './armazenamento.js', './auth.js', './indices.js', './calculo.js', './xlsx.js', './pdf.js', './relatorios.js', './importar.js', './app.js',
@@ -11,7 +11,7 @@ const ARQUIVOS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -22,7 +22,8 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request).then(r => {
+    // Confere sempre com o servidor (o navegador guardaria a cópia por até 10 minutos)
+    fetch(e.request, { cache: 'no-cache' }).then(r => {
       if (r.ok) { const copia = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copia)); }
       return r;
     }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('./index.html')))
