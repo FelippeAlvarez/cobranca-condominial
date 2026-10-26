@@ -1,11 +1,12 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.2.0';
+const VERSAO = '1.3.0';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, acordos: {}, carregadoEm: 0 };
 
+const DESCRICOES_COTAS_PADRAO = ['Cota condominial', 'Cota extra', 'Fundo de reserva', 'Fundo de obras', 'Rateio extraordinário', 'Água', 'Gás'];
 const RUBRICAS_PADRAO = [
   'Custas iniciais', 'Taxa judiciária', 'Custas de distribuição', 'Diligência de oficial de justiça', 'Certidão de ônus reais (RGI)',
   'Certidão', 'Registro / averbação', 'Publicação de edital', 'Postagem / AR', 'Cópias e autenticações', 'Avaliação / perícia', 'Outras despesas',
@@ -16,6 +17,7 @@ function normalizarConfig(c) {
   c.escritorio = c.escritorio || {};
   c.padroes = { ...PADROES, ...(c.padroes || {}) };
   if (!Array.isArray(c.rubricas) || !c.rubricas.length) c.rubricas = [...RUBRICAS_PADRAO];
+  if (!Array.isArray(c.descricoesCotas) || !c.descricoesCotas.length) c.descricoesCotas = [...DESCRICOES_COTAS_PADRAO];
   return c;
 }
 
@@ -60,8 +62,23 @@ async function recarregarTudo() {
 
 function atualizarDatalists() {
   $('#dlRubricas').innerHTML = D.config.rubricas.map(r => `<option value="${esc(r)}">`).join('');
-  const descs = new Set(['Cota condominial', 'Cota extra', 'Fundo de reserva', 'Fundo de obras', 'Rateio extraordinário', 'Água', 'Gás']);
-  $('#dlDescCotas').innerHTML = [...descs].map(r => `<option value="${esc(r)}">`).join('');
+  $('#dlDescCotas').innerHTML = D.config.descricoesCotas.map(r => `<option value="${esc(r)}">`).join('');
+}
+
+// Edição rápida de uma lista de sugestões (descrições das cotas ou rubricas das despesas), a partir da tela da cobrança
+function editarSugestoes(chave, titulo) {
+  if (!Auth.ehAdmin()) throw new Error('Só o administrador altera as listas de sugestões.');
+  abrirModal(`<div class="modal-cab"><h2>${esc(titulo)}</h2><button class="bt-x" data-fechar>&times;</button></div>
+    <p class="dica">Uma sugestão por linha. Elas aparecem como opções ao digitar; ainda é possível digitar qualquer outro texto. A lista vale para todas as cobranças desta base.</p>
+    <textarea id="sgLista" rows="12">${esc(D.config[chave].join('\n'))}</textarea>
+    <div class="acoes-linha"><button class="bt primario" id="sgOk">Salvar</button><button class="bt" data-fechar>Cancelar</button></div>`, 'modal-medio');
+  $('#sgOk').addEventListener('click', () => executar(async () => {
+    const lista = $('#sgLista').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (!lista.length) throw new Error('Informe ao menos uma sugestão.');
+    await salvarConfig({ ...structuredClone(D.config), [chave]: lista });
+    fecharModal();
+    aviso('Lista de sugestões salva.');
+  }));
 }
 
 // Grava o registro conferindo se ninguém o alterou desde que foi lido
@@ -118,9 +135,14 @@ function destacarMenu(rota) {
 }
 
 async function rotear() {
-  if (!Armaz.modo) return telaConexao();
   const h = location.hash.replace(/^#\/?/, '') || 'inicio';
   const [rota, arg] = h.split('/');
+  // Manual e "Sobre" abrem mesmo sem login
+  if (rota === 'sobre') { destacarMenu(rota); window.scrollTo(0, 0); return telaSobre(arg); }
+  if (rota === 'manual') { destacarMenu(rota); window.scrollTo(0, 0); return telaManual(); }
+  if (!Armaz.modo) return telaConexao();
+  // Sem login, nenhuma tela de dados abre (volta ao login)
+  if (!Auth.usuario || !document.body.classList.contains('conectado')) return executar(conectado);
   const params = new URLSearchParams(h.split('?')[1] || '');
   destacarMenu(rota);
   window.scrollTo(0, 0);
@@ -328,13 +350,13 @@ function telaCobranca(id, params) {
   <div class="cartao"><div class="cartao-cab"><h2>Cotas em aberto</h2><div class="acoes">
       <button class="bt pequeno" id="btAddCota">+ Adicionar cota</button><button class="bt pequeno" id="btSeqCotas">Lançar meses em sequência</button>
       <button class="bt pequeno" id="btImpCotas">Importar planilha</button><button class="bt pequeno" id="btOrdCotas">Ordenar por vencimento</button></div></div>
-    <p class="dica">Valores originários de cada mês. Marque "Paga" para tirar a cota do cálculo sem apagá-la.</p>
+    <p class="dica">Valores originários de cada mês. Marque "Paga" para tirar a cota do cálculo sem apagá-la.${Auth.ehAdmin() ? ' <a href="#" id="sugCotas">Editar as sugestões de descrição</a>' : ''}</p>
     <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Competência</th><th>Descrição</th><th>Vencimento</th><th class="num">Valor originário</th><th class="cen">Paga</th><th></th></tr></thead><tbody id="cotas"></tbody></table></div>
     <div id="totCotas" class="dica" style="margin-top:8px"></div></div>
 
   <div class="cartao"><div class="cartao-cab"><h2>Despesas pagas</h2><div class="acoes"><button class="bt pequeno" id="btAddDesp">+ Adicionar despesa</button><button class="bt pequeno" id="btImpDesp">Importar planilha</button></div></div>
-    <p class="dica">Custas, certidões, registros e outras despesas, com a data do pagamento. Marque "Corrigir" para atualizar o valor desde o pagamento pelo índice da cobrança.</p>
-    <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Data do pagamento</th><th>Rubrica</th><th>Descrição</th><th class="num">Valor</th><th class="cen">Corrigir</th><th></th></tr></thead><tbody id="despesas"></tbody></table></div></div>
+    <p class="dica">Custas, certidões, registros e outras despesas, com a data do pagamento. Marque "Corrigir" para atualizar o valor desde o pagamento pelo índice da cobrança. "Id. no processo" (opcional) indica onde está o comprovante nos autos e sai na planilha.${Auth.ehAdmin() ? ' <a href="#" id="sugRubricas">Editar as sugestões de rubrica</a>' : ''}</p>
+    <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Data do pagamento</th><th>Rubrica</th><th>Descrição</th><th title="Id. do comprovante no processo eletrônico">Id. no processo</th><th class="num">Valor</th><th class="cen">Corrigir</th><th></th></tr></thead><tbody id="despesas"></tbody></table></div></div>
 
   <div class="cartao" id="encCob"><h2>Encargos e honorários contratuais</h2>
     <p class="dica">Em branco, valem os critérios do condomínio (ou os padrões das Configurações).</p><div id="encCampos"></div></div>
@@ -433,9 +455,10 @@ function telaCobranca(id, params) {
       <td><input type="date" data-k="data" value="${esc(d.data || '')}"></td>
       <td><input data-k="rubrica" list="dlRubricas" value="${esc(d.rubrica || '')}"></td>
       <td><input data-k="descricao" value="${esc(d.descricao || '')}"></td>
+      <td><input data-k="idProc" class="id-proc" value="${esc(d.idProc || '')}" placeholder="Ex.: 123456789" title="Id. do documento no processo eletrônico (comprovante da despesa)"></td>
       <td><input data-k="valor" class="num" inputmode="decimal" value="${d.valor ? fmtNum(d.valor) : ''}"></td>
       <td class="cen"><input type="checkbox" data-k="corrigir" ${d.corrigir !== false ? 'checked' : ''}></td>
-      <td><button class="bt-x" title="Remover">&times;</button></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Nenhuma despesa lançada.</td></tr>';
+      <td><button class="bt-x" title="Remover">&times;</button></td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Nenhuma despesa lançada.</td></tr>';
     $$('#despesas tr[data-i]').forEach(tr => {
       const d = cob.despesas[+tr.dataset.i];
       $$('[data-k]', tr).forEach(inp => inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
@@ -448,6 +471,8 @@ function telaCobranca(id, params) {
     });
   }
   $('#btAddDesp').addEventListener('click', () => { cob.despesas.push({ id: novoId(), data: hoje(), rubrica: '', descricao: '', valor: 0, corrigir: true }); desenharDespesas(); marcarSujo(); });
+  $('#sugCotas')?.addEventListener('click', e => { e.preventDefault(); executar(() => editarSugestoes('descricoesCotas', 'Sugestões de descrição das cotas')); });
+  $('#sugRubricas')?.addEventListener('click', e => { e.preventDefault(); executar(() => editarSugestoes('rubricas', 'Sugestões de rubrica das despesas')); });
   $('#btImpDesp').addEventListener('click', () => abrirImportacao({ destino: 'despesas', aoConcluir: lista => { cob.despesas.push(...lista); desenharDespesas(); alterado(); } }));
   desenharDespesas();
 
@@ -645,6 +670,9 @@ function telaConfig() {
     <p class="dica">Usados quando o condomínio e a cobrança não têm critérios próprios. Código Civil, art. 1.336, § 1º: juros convencionados ou, se não previstos, de 1% ao mês, e multa de até 2%.</p>
     <div id="encPad">${camposEncargosHTML(c.padroes, null)}</div>
     <label class="inline" style="margin-top:10px"><input type="checkbox" id="ignNeg" ${c.padroes.ignorarNegativos ? 'checked' : ''}> Desconsiderar índices mensais negativos (deflação) no IGP-M e no IPCA</label>
+    <h3 class="sec" style="margin-top:16px">Sugestões de descrição das cotas</h3>
+    <p class="dica">Opções ao digitar a descrição de uma cota (uma por linha).</p>
+    <textarea id="descCotas" rows="5">${esc(c.descricoesCotas.join('\n'))}</textarea>
     <h3 class="sec" style="margin-top:16px">Rubricas de despesas</h3>
     <p class="dica">Sugestões ao lançar despesas (uma por linha).</p>
     <textarea id="rubricas" rows="6">${esc(c.rubricas.join('\n'))}</textarea>
@@ -653,8 +681,9 @@ function telaConfig() {
   ${secaoIndicesHTML()}
   <div class="cartao"><h2>Base de dados</h2>
     <dl class="dados"><div><dt>Local</dt><dd>${esc(Armaz.descricao())}</dd></div><div><dt>Versão</dt><dd>${VERSAO}</dd></div></dl>
-    <div class="acoes-linha"><a class="bt" href="#/usuarios">Usuários e convites</a><a class="bt" href="#/conta">Minha conta</a></div></div>`;
+    <div class="acoes-linha"><button class="bt" id="btMudarLocal">Mudar o local dos dados…</button><a class="bt" href="#/usuarios">Usuários e convites</a><a class="bt" href="#/conta">Minha conta</a></div></div>`;
   ligarIndices();
+  $('#btMudarLocal').addEventListener('click', () => executar(mudarLocal));
   let logo = { logo: e.logo, logoL: e.logoL, logoA: e.logoA };
   $('#fEsc').addEventListener('input', marcarSujo);
   const mostrarLogo = () => {
@@ -686,11 +715,124 @@ function telaConfig() {
     c.padroes = { ...lerEncargos($('#encPad'), false), ignorarNegativos: $('#ignNeg').checked };
     if (!c.padroes.indice) c.padroes.indice = 'UFIR-RJ';
     c.rubricas = $('#rubricas').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    c.descricoesCotas = $('#descCotas').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     await salvarConfig(c);
     sujo = false;
     aviso('Configurações salvas.');
     telaConfig();
   }); });
+}
+
+/* ================= Cópia dos dados e mudança de local ================= */
+const SUBPASTAS_DADOS = ['condominios', 'cobrancas', 'acordos'];
+
+async function copiaDosDados() {
+  const arquivos = {};
+  for (const p of ['config.json', 'indices.json', 'usuarios.json']) { const t = await Armaz.ler(p); if (t !== null) arquivos[p] = t; }
+  for (const sub of SUBPASTAS_DADOS) {
+    for (const n of await Armaz.listar(sub)) { const t = await Armaz.ler(`${sub}/${n}`); if (t !== null) arquivos[`${sub}/${n}`] = t; }
+  }
+  return { origem: Armaz.descricao(), modo: Armaz.modo, pasta: Armaz.modo === 'pasta' ? Armaz.dir : null, base: Armaz.modo === 'dropbox' ? DBX.base : '',
+    criadoEm: new Date().toISOString(), usuario: Auth.usuario, lembrar: !!localStorage.getItem('cc-sessao'), arquivos };
+}
+
+const resumoCopia = arqs => {
+  const n = pre => Object.keys(arqs).filter(p => p.startsWith(pre + '/')).length;
+  return `${n('cobrancas')} cobrança(s), ${n('condominios')} condomínio(s), ${n('acordos')} acordo(s)${arqs['usuarios.json'] ? ', usuários' : ''}${arqs['config.json'] ? ', configurações' : ''}${arqs['indices.json'] ? ', índices' : ''}`;
+};
+
+async function mudarLocal() {
+  if (sujo) throw new Error('Salve as alterações antes de mudar o local dos dados.');
+  const destino = await perguntar('Mudar o local dos dados', `<p>Local atual: <b>${esc(Armaz.descricao())}</b>.</p>
+    <p>Escolha o novo local. Antes de mudar, o programa pergunta se deve levar uma cópia dos dados atuais. Nada é apagado do local atual.</p>`,
+    [...(Armaz.modo !== 'dropbox' ? [['dropbox', 'Dropbox da equipe (pasta COBRANÇA CONDOMINIAL)', 'primario']] : []),
+      ...('showDirectoryPicker' in window ? [['pasta', 'Pasta do computador…']] : []), ['local', 'Somente neste navegador (teste)'], ['', 'Cancelar']]);
+  if (!destino) return;
+  if (destino === 'local' && Armaz.modo === 'local') throw new Error('Os dados já estão neste navegador.');
+  const h = destino === 'pasta' ? await Armaz.escolherPasta() : null;
+  if (h && Armaz.modo === 'pasta' && await h.isSameEntry(Armaz.dir)) throw new Error('Esta já é a pasta atual dos dados.');
+  $('#conteudo').innerHTML = '<p class="carregando">Lendo os dados atuais…</p>';
+  const copia = await copiaDosDados();
+  const resp = await perguntar('Levar os dados para o novo local?', `<p>Copiar para o novo local os dados atuais: <b>${esc(resumoCopia(copia.arquivos))}</b>?</p>
+    <p class="dica">Os arquivos do local atual continuam onde estão. Se o novo local já tiver dados, o programa pergunta de novo antes de copiar.</p>`,
+    [['sim', 'Copiar os dados', 'primario'], ['nao', 'Não copiar (usar o que houver no novo local)'], ['', 'Cancelar']]);
+  if (!resp) return rotear();
+  if (resp === 'sim') await IDB.set('kv', 'migracao', copia); else await IDB.del('kv', 'migracao');
+  document.body.classList.remove('conectado', 'admin');
+  limparMemoria();
+  if (destino === 'pasta') { await Armaz.usarPasta(h); return conectado(); }
+  if (destino === 'local') { Armaz.usarLocal(); return conectado(); }
+  // Dropbox: usa a conexão deste aparelho ou conecta a conta (a cópia é gravada ao voltar do Dropbox)
+  if (DBX.temAcesso()) { Armaz.usarDropbox(); return conectado(); }
+  Armaz.desconectar();
+  return DBX.entrar();
+}
+
+// Cópia dos dados em arquivo (para levar a outro aparelho, ao aplicativo instalado no iPhone ou como segurança)
+async function exportarDados() {
+  const copia = await copiaDosDados();
+  const arq = { formato: 'cobranca-condominial', versao: VERSAO, exportadoEm: new Date().toISOString(), origem: copia.origem, arquivos: copia.arquivos };
+  baixar(new Blob([JSON.stringify(arq)], { type: 'application/json' }), `cobranca-condominial-dados-${hoje()}.json`);
+  aviso(`Cópia dos dados salva (${resumoCopia(copia.arquivos)}). Guarde o arquivo com cuidado: ele contém dados pessoais dos devedores.`);
+}
+
+// Lê um arquivo exportado e grava os dados no local atual (pergunta antes se o local já tiver dados)
+function importarDados(depois) {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.json,application/json';
+  inp.addEventListener('change', () => executar(async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    let j;
+    try { j = JSON.parse(await f.text()); } catch { throw new Error('Arquivo inválido: não é uma cópia dos dados do programa.'); }
+    if (j?.formato !== 'cobranca-condominial' || typeof j.arquivos !== 'object') throw new Error('Arquivo inválido: não é uma cópia dos dados do programa Cobrança Condominial.');
+    const ok = await perguntar('Importar cópia dos dados', `<p>Arquivo <b>${esc(f.name)}</b>, exportado em ${new Date(j.exportadoEm).toLocaleString('pt-BR')} de "${esc(j.origem || '')}": <b>${esc(resumoCopia(j.arquivos))}</b>.</p>
+      <p>Gravar esses dados em <b>${esc(Armaz.descricao())}</b>? Se já houver dados aqui, o programa pergunta antes de substituir.</p>`,
+      [['sim', 'Importar', 'primario'], ['', 'Cancelar']]);
+    if (ok !== 'sim') return;
+    await IDB.set('kv', 'migracao', { origem: 'o arquivo ' + f.name, modo: 'arquivo', criadoEm: new Date().toISOString(), usuario: null, arquivos: j.arquivos });
+    await aplicarMigracaoPendente();
+    await depois();
+  }));
+  inp.click();
+}
+
+// Cópia pendente (pedida antes de mudar de local ou ao importar): grava os arquivos no local atual
+async function aplicarMigracaoPendente() {
+  const mig = await IDB.get('kv', 'migracao').catch(() => null);
+  if (!mig) return;
+  const mesmo = mig.modo === Armaz.modo && (Armaz.modo === 'local' || (Armaz.modo === 'dropbox' && mig.base === DBX.base)
+    || (Armaz.modo === 'pasta' && mig.pasta && await mig.pasta.isSameEntry(Armaz.dir).catch(() => false)));
+  if (mesmo) { await IDB.del('kv', 'migracao'); return; }
+  // Cópia preparada há mais de duas horas (a mudança foi interrompida): confirma de novo
+  if (Date.now() - new Date(mig.criadoEm).getTime() > 2 * 3600e3) {
+    const ok = await perguntar('Cópia pendente', `<p>Há uma cópia dos dados de <b>${esc(mig.origem)}</b>, preparada em ${new Date(mig.criadoEm).toLocaleString('pt-BR')}, ainda não gravada.</p>
+      <p>Copiar agora para <b>${esc(Armaz.descricao())}</b>?</p>`, [['sim', 'Copiar', 'primario'], ['nao', 'Descartar a cópia']]);
+    if (ok !== 'sim') { await IDB.del('kv', 'migracao'); return; }
+  }
+  const nomes = Object.keys(mig.arquivos);
+  const existentes = new Set();
+  for (const p of nomes.filter(p => !p.includes('/'))) if (await Armaz.ler(p) !== null) existentes.add(p);
+  for (const sub of SUBPASTAS_DADOS) for (const n of await Armaz.listar(sub)) existentes.add(`${sub}/${n}`);
+  const repetidos = nomes.filter(p => existentes.has(p));
+  let modo = 'tudo';
+  if (existentes.size) {
+    modo = await perguntar('O novo local já tem dados', `<p>Copiando de <b>${esc(mig.origem)}</b> para <b>${esc(Armaz.descricao())}</b>.</p>
+      <p>O novo local já tem ${existentes.size} arquivo(s)${repetidos.length ? `, dos quais ${repetidos.length} com o mesmo nome dos que serão copiados` : ''}. Como prosseguir?</p>`,
+      [['faltantes', 'Copiar só o que não existe lá', 'primario'], ...(repetidos.length ? [['tudo', 'Copiar tudo, substituindo os arquivos iguais']] : []), ['nao', 'Não copiar']]);
+    if (!modo || modo === 'nao') { await IDB.del('kv', 'migracao'); aviso('Nenhum arquivo copiado.'); return; }
+  }
+  let n = 0;
+  for (const p of nomes) {
+    if (modo === 'faltantes' && existentes.has(p)) continue;
+    $('#conteudo').innerHTML = `<p class="carregando">Copiando os dados… ${++n} de ${nomes.length}</p>`;
+    await Armaz.gravar(p, mig.arquivos[p]);
+  }
+  await IDB.del('kv', 'migracao');
+  // Com os usuários copiados, a pessoa continua conectada no novo local
+  if (mig.usuario && nomes.includes('usuarios.json') && (modo === 'tudo' || !existentes.has('usuarios.json'))) { Auth.usuario = mig.usuario; Auth._guardar(mig.lembrar); }
+  aviso(`${n} arquivo(s) copiado(s) de ${mig.origem}.`);
 }
 
 /* ================= Conexão com a base de dados ================= */
@@ -719,7 +861,8 @@ async function telaConexao(erro) {
           ${salva ? `<button class="bt" id="btRetomar">Abrir "${esc(salva)}"</button> ` : ''}<button class="bt" id="btPasta">Escolher pasta…</button></div>` : ''}
         <div class="cartao"><h2>Apenas testar</h2><p class="dica">Os dados ficam só neste navegador. Não use para o trabalho real.</p><button class="bt" id="btLocal">Testar sem pasta</button></div>
       </div>
-    </details>`;
+    </details>
+    <p class="rodape-legal">${linksLegais()}<br>Ao usar o programa, você concorda com os termos de uso e a política de privacidade.</p>`;
   $('#btDropbox').addEventListener('click', () => executar(() => DBX.entrar()));
   $('#btRetomar')?.addEventListener('click', () => executar(async () => {
     if (!await Armaz.retomarPasta(true)) throw new Error('Sem permissão para a pasta. Escolha a pasta novamente.');
@@ -733,6 +876,7 @@ async function telaConexao(erro) {
 // Base acessível: confere o login (ou cria o primeiro administrador) e carrega os dados
 async function conectado() {
   $('#conteudo').innerHTML = '<p class="carregando">Abrindo a base de dados…</p>';
+  await aplicarMigracaoPendente();
   if (!await Auth.temUsuarios()) return telaPrimeiroAdmin();
   const s = await Auth.retomar();
   if (!s) return telaLogin();
@@ -750,12 +894,12 @@ async function abrirBase() {
   $('#btSair').addEventListener('click', () => {
     if (sujo && !confirm('Há alterações não salvas. Sair assim mesmo?')) return;
     sujo = false;
-    Auth.sair();
+    Auth.sair(); limparMemoria();
     document.body.classList.remove('conectado', 'admin');
     $('#usuarioTopo').innerHTML = '';
     telaLogin();
   });
-  $('#rodapeMenu').innerHTML = `Versão ${VERSAO}`;
+  $('#rodapeMenu').innerHTML = `Versão ${VERSAO}<br>${linksLegais()}`;
   rotear();
 }
 
@@ -782,8 +926,11 @@ function telaLogin() {
   $('#lgTrocarBase').addEventListener('click', e => { e.preventDefault(); desconectarBase(); });
 }
 
+// Ao sair, os dados carregados deixam a memória da página
+function limparMemoria() { D.condominios = {}; D.cobrancas = {}; D.acordos = {}; }
+
 function desconectarBase() {
-  Auth.sair();
+  Auth.sair(); limparMemoria();
   if (Armaz.modo === 'dropbox') DBX.sair();
   Armaz.desconectar();
   telaConexao();
@@ -802,7 +949,7 @@ function telaPrimeiroAdmin() {
       <div class="campo"><label>Repita a senha</label><input id="adSenha2" type="password" autocomplete="new-password" required></div>
       <button class="bt primario">Criar administrador e entrar</button>
     </div>
-    <p style="margin-top:12px"><a href="#" id="adVoltar">Voltar</a></p>
+    <p style="margin-top:12px"><a href="#" id="adImportar">Importar uma cópia dos dados</a> (de outro local ou de um teste) · <a href="#" id="adVoltar">Voltar</a></p>
   </form>`;
   $('#fAdm').addEventListener('submit', e => { e.preventDefault(); executar(async () => {
     if ($('#adSenha').value !== $('#adSenha2').value) throw new Error('As senhas não conferem.');
@@ -811,6 +958,7 @@ function telaPrimeiroAdmin() {
     await abrirBase();
   }); });
   $('#adVoltar').addEventListener('click', e => { e.preventDefault(); desconectarBase(); });
+  $('#adImportar').addEventListener('click', e => { e.preventDefault(); importarDados(conectado); });
 }
 
 function telaTrocarSenha(obrigatoria) {
@@ -841,7 +989,9 @@ function telaConta() {
       <div><dt>Base de dados</dt><dd>${esc(Armaz.descricao())}</dd></div>
       ${Armaz.modo === 'dropbox' ? `<div><dt>Conta do Dropbox neste aparelho</dt><dd>${esc(DBX.conta)}</dd></div>` : ''}
       <div><dt>Versão do programa</dt><dd>${VERSAO}</dd></div></dl>
-      <div class="acoes-linha"><button class="bt" id="btSenha">Trocar a senha</button><button class="bt" id="btDesconectar">Desconectar este aparelho</button></div>
+      <div class="acoes-linha"><button class="bt" id="btSenha">Trocar a senha</button><button class="bt" id="btMudarLocal">Mudar o local dos dados…</button><button class="bt" id="btDesconectar">Desconectar este aparelho</button></div>
+      <div class="acoes-linha"><button class="bt" id="btExportar">Exportar cópia dos dados</button>${Auth.ehAdmin() ? '<button class="bt" id="btImportar">Importar cópia dos dados</button>' : ''}</div>
+      <p class="dica" style="margin-top:8px">A cópia dos dados é um arquivo com todas as cobranças, condomínios, acordos, usuários e configurações: serve como cópia de segurança ou para levar os dados a outro local. Contém dados pessoais dos devedores.</p>
       <p class="dica" style="margin-top:8px">"Desconectar este aparelho" sai do login e da conta do Dropbox neste aparelho (útil em computador compartilhado).</p></div>
     <div id="areaSenha"></div>
     <div class="cartao"><h2>Aplicativo neste aparelho</h2>
@@ -849,6 +999,9 @@ function telaConta() {
       <p class="dica" style="margin-top:8px">Instalado, o programa ganha ícone próprio e abre em janela própria, sem barra de endereço. No computador e no Android, a conexão com o Dropbox e o login deste navegador continuam valendo no aplicativo. Os dados da equipe ficam no Dropbox e aparecem em qualquer aparelho.</p></div>`;
   atualizarBotoesInstalar();
   $('#btSenha').addEventListener('click', () => telaTrocarSenha(false));
+  $('#btMudarLocal').addEventListener('click', () => executar(mudarLocal));
+  $('#btExportar').addEventListener('click', () => executar(exportarDados));
+  $('#btImportar')?.addEventListener('click', () => importarDados(async () => { await recarregarTudo(); rotear(); }));
   $('#btDesconectar').addEventListener('click', () => {
     if (!confirm('Desconectar este aparelho? Será preciso conectar o Dropbox e entrar de novo.')) return;
     sujo = false;

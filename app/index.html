@@ -19,7 +19,7 @@
 <header class="topo">
   <button id="btMenu" class="bt-menu" aria-label="Abrir menu">&#9776;</button>
   <a class="marca" href="#/inicio"><img src="icone.svg" alt=""><span>Cobrança Condominial</span></a>
-  <button id="btInstalarTopo" class="bt-sair bt-instalar-topo" hidden title="Instalar o aplicativo neste aparelho">Instalar app</button>
+  <div class="acoes-topo"><button type="button" id="btInstalarTopo" class="bt-manual" title="Instalar o aplicativo neste aparelho" hidden>Instalar app</button><a class="bt-manual" href="#/manual" title="Manual de uso">Manual</a></div>
   <div class="topo-dir"><div id="usuarioTopo" class="usuario-topo"></div><div id="statusArmaz" class="status-armaz"></div></div>
 </header>
 <nav id="menu" class="menu">
@@ -33,6 +33,8 @@
   <a href="#/usuarios" data-rota="usuarios" class="so-admin">Usuários</a>
   <a href="#/config" data-rota="config" class="so-admin">Configurações</a>
   <a href="#/conta" data-rota="conta">Minha conta</a>
+  <a href="#/manual" data-rota="manual">Manual de uso</a>
+  <a href="#/sobre" data-rota="sobre">Sobre, termos e privacidade</a>
   <a href="#" id="btInstalar" class="link-instalar" hidden>Instalar o aplicativo</a>
   <div id="rodapeMenu" class="rodape-menu"></div>
 </nav>
@@ -55,6 +57,8 @@
 <script src="relatorios.js"></script>
 <script src="importar.js"></script>
 <script src="acordo.js"></script>
+<script src="sobre.js"></script>
+<script src="manual.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

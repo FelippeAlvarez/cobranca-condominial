@@ -1,0 +1,11 @@
+Cobrança Condominial
+© 2026 Felippe Alvarez. Todos os direitos reservados.
+
+Este programa é protegido pelas Leis 9.609/1998 e 9.610/1998. O uso é permitido apenas às pessoas
+autorizadas pelo titular, conforme os Termos de Uso disponíveis no próprio programa (menu "Sobre, termos
+e privacidade"). Não é permitido copiar, modificar, distribuir, sublicenciar, vender ou disponibilizar o
+programa a terceiros sem autorização prévia e por escrito do titular.
+
+Bibliotecas de terceiros incluídas (cada uma sob a própria licença):
+- jsPDF 2.5.1 — Licença MIT (app/licencas/jspdf-mit.txt)
+- PDF.js 3.11.174 — Licença Apache 2.0 (app/licencas/apache-2.0.txt)

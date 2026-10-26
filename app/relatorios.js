@@ -6,6 +6,8 @@ const TIPOS = { extrajudicial: 'Cobrança extrajudicial', judicial: 'Cobrança j
 const nomeCond = cob => D.condominios[cob.condominioId]?.razao || '—';
 const devedoresTexto = cob => (cob.devedores || []).filter(d => d.nome).map(d => d.nome + (d.documento ? ` (${rotuloDoc(d.documento)} ${fmtDoc(d.documento)})` : '')).join('; ') || '—';
 const devedoresCurto = cob => (cob.devedores || []).filter(d => d.nome).map(d => d.nome).join('; ') || '—';
+// Descrição da despesa com o Id. do comprovante no processo, se informado
+const descDespesa = d => [d.descricao, d.idProc ? `Id. ${d.idProc}` : ''].filter(Boolean).join(' - ');
 const descProcesso = cob => cob.tipo === 'judicial'
   ? 'Cobrança judicial' + (cob.processo ? ' - Processo nº ' + cob.processo : '') + (cob.juizo ? ' - ' + cob.juizo : '')
   : 'Cobrança extrajudicial';
@@ -83,7 +85,7 @@ function secaoCobrancaPDF(P, cob, r) {
       { t: 'Data do pagamento', w: 20, nw: true }, { t: 'Rubrica', w: 40 }, { t: 'Descrição', w: 60 }, { t: 'Valor pago', w: 24, a: 'r' },
       { t: 'Fator de correção', w: 20, a: 'r' }, { t: 'Valor corrigido', w: 24, a: 'r' },
     ], [
-      ...r.despesas.map(x => ({ c: [fmtData(x.d.data), x.d.rubrica || '', x.d.descricao || '', fmtNum(x.valor), x.fator === 1 && x.d.corrigir === false ? 'sem correção' : fmtFator(x.fator), fmtNum(x.corrigido)] })),
+      ...r.despesas.map(x => ({ c: [fmtData(x.d.data), x.d.rubrica || '', descDespesa(x.d), fmtNum(x.valor), x.fator === 1 && x.d.corrigir === false ? 'sem correção' : fmtFator(x.fator), fmtNum(x.corrigido)] })),
       { c: ['Totais', '', '', fmtNum(r.td.original), '', fmtNum(r.td.corrigido)], total: true },
     ], 8);
   }
@@ -232,7 +234,7 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   const linhaDesp = (x) => {
     const n = L.length + 1;
     const fat = x && x.d.corrigir === false ? { v: 1, s: 'f' } : { f: `IF(D${n}="","",${fator('A' + n)})`, v: x?.fator, s: 'f' };
-    L.push([{ v: x ? x.d.data : '', s: 'd' }, x ? x.d.rubrica || '' : null, x ? x.d.descricao || '' : null, { v: x ? x.valor : '', s: 'm' }, fat, { f: `IF(D${n}="","",ROUND(D${n}*E${n},2))`, v: x?.corrigido, s: 'm' }]);
+    L.push([{ v: x ? x.d.data : '', s: 'd' }, x ? x.d.rubrica || '' : null, x ? descDespesa(x.d) : null, { v: x ? x.valor : '', s: 'm' }, fat, { f: `IF(D${n}="","",ROUND(D${n}*E${n},2))`, v: x?.corrigido, s: 'm' }]);
   };
   r.despesas.forEach(linhaDesp);
   for (let i = 0; i < LINHAS_EXTRAS_DESP; i++) linhaDesp(null);

@@ -100,7 +100,17 @@ function calcularAcordo(a) {
   const f1 = p.jurosAte1 === false ? 1 : fatorPeriodo(i, a.data, p.primeiroVenc);
   const plano = neg.saldo > 0 ? planoPrice({ saldo: neg.saldo, taxa: p.taxa, f1, primeiroVenc: p.primeiroVenc, modo: p.modo, prazo: p.prazo, parcela: p.parcela }) : { pmt: 0, n: 0, parcelas: [] };
   const totalParcelas = somar(plano.parcelas, x => x.valor), totalJuros = somar(plano.parcelas, x => x.juros);
-  return { deb, ...neg, plano, f1, totalParcelas, totalJuros, totalAcordo: r2(neg.sinal + totalParcelas) };
+  // Rateio: parte de honorários advocatícios (contratuais e sucumbenciais) no valor negociado, depois do desconto
+  const descDe = k => a.desconto?.modo === 'itens' ? neg.descItens[k] || 0 : deb.total ? neg.desconto * (deb.comp[k] || 0) / deb.total : 0;
+  const honNeg = r2(['honContr', 'suc'].reduce((s, k) => s + (deb.comp[k] || 0) - descDe(k), 0));
+  const propHon = neg.negociado > 0 ? Math.max(0, Math.min(1, honNeg / neg.negociado)) : 0;
+  return { deb, ...neg, plano, f1, totalParcelas, totalJuros, totalAcordo: r2(neg.sinal + totalParcelas), honNeg, propHon };
+}
+
+// Divide um valor entre o condomínio e os honorários, na proporção do débito negociado
+function rateio(valor, propHon) {
+  const hon = r2(valor * propHon);
+  return { hon, cond: r2(valor - hon) };
 }
 
 /* ---------- Acompanhamento ---------- */
@@ -448,7 +458,7 @@ function editorAcordo(a, nova) {
   const gravar = async () => {
     const c = validar();
     a.devedorNome = devedorDoAcordo(a).nome;
-    a.resumo = { total: c.deb.total, desconto: c.desconto, negociado: c.negociado, sinal: c.sinal, saldo: c.saldo, n: c.plano.n, pmt: c.plano.pmt };
+    a.resumo = { total: c.deb.total, desconto: c.desconto, negociado: c.negociado, sinal: c.sinal, saldo: c.saldo, n: c.plano.n, pmt: c.plano.pmt, propHon: c.propHon };
     const g = await salvarRegistro('acordos', a);
     a.rev = g.rev;
     sujo = false;
@@ -498,10 +508,14 @@ function resultadoAcordoHTML(a, c) {
       <div class="res-l final"><span>Total a pagar pelo acordo</span><b>${fmtMoeda(c.totalAcordo)}</b></div></div>
     <div><p><b>${cond}.</b></p><p class="dica">Total de juros do parcelamento: ${fmtMoeda(c.totalJuros)}.${c.desconto ? ` Desconto concedido: ${fmtMoeda(c.desconto)} (${fmtPct(r2(c.desconto / c.deb.total * 100))}% do débito).` : ''}</p>
       <p class="dica">${esc(clausulasAcordo(a).join(' '))}</p></div></div>
-    ${c.plano.parcelas.length ? `<details class="detalhes" open><summary>Parcelas</summary><div class="rolagem tabela-parcelas"><table class="tabela"><thead><tr><th>Nº</th><th>Vencimento</th><th class="num">Parcela</th><th class="num">Juros</th><th class="num">Amortização</th><th class="num">Saldo devedor</th></tr></thead><tbody>
-      ${c.sinal ? `<tr><td>Entrada</td><td>${fmtData(a.sinal.data)}</td><td class="num">${fmtNum(c.sinal)}</td><td class="num">—</td><td class="num">${fmtNum(c.sinal)}</td><td class="num">${fmtNum(c.saldo)}</td></tr>` : ''}
-      ${c.plano.parcelas.map(p => `<tr><td>${p.n}</td><td>${fmtData(p.venc)}</td><td class="num">${fmtNum(p.valor)}</td><td class="num">${fmtNum(p.juros)}</td><td class="num">${fmtNum(p.amort)}</td><td class="num">${fmtNum(p.saldo)}</td></tr>`).join('')}
-      <tr class="subtotal"><td>Totais</td><td></td><td class="num">${fmtNum(c.totalAcordo)}</td><td class="num">${fmtNum(c.totalJuros)}</td><td class="num">${fmtNum(r2(c.totalAcordo - c.totalJuros))}</td><td></td></tr></tbody></table></div></details>` : ''}`;
+    ${c.plano.parcelas.length ? (() => {
+      const rat = c.propHon > 0, rc = v => { const x = rateio(v, c.propHon); return rat ? `<td class="num">${fmtNum(x.cond)}</td><td class="num">${fmtNum(x.hon)}</td>` : ''; };
+      const linhas = [...(c.sinal ? [['Entrada', a.sinal.data, c.sinal, null, c.sinal, c.saldo]] : []), ...c.plano.parcelas.map(p => [p.n, p.venc, p.valor, p.juros, p.amort, p.saldo])];
+      const somaR = rat ? linhas.reduce((s, l) => { const x = rateio(l[2], c.propHon); return { cond: r2(s.cond + x.cond), hon: r2(s.hon + x.hon) }; }, { cond: 0, hon: 0 }) : null;
+      return `<details class="detalhes" open><summary>Parcelas${rat ? ` (rateio: ${fmtPct(r2(c.propHon * 100))}% de honorários advocatícios)` : ''}</summary><div class="rolagem tabela-parcelas"><table class="tabela"><thead><tr><th>Nº</th><th>Vencimento</th><th class="num">Parcela</th><th class="num">Juros</th><th class="num">Amortização</th><th class="num">Saldo devedor</th>${rat ? '<th class="num">Condomínio</th><th class="num">Honorários</th>' : ''}</tr></thead><tbody>
+      ${linhas.map(l => `<tr><td>${l[0]}</td><td>${fmtData(l[1])}</td><td class="num">${fmtNum(l[2])}</td><td class="num">${l[3] === null ? '—' : fmtNum(l[3])}</td><td class="num">${fmtNum(l[4])}</td><td class="num">${fmtNum(l[5])}</td>${rc(l[2])}</tr>`).join('')}
+      <tr class="subtotal"><td>Totais</td><td></td><td class="num">${fmtNum(c.totalAcordo)}</td><td class="num">${fmtNum(c.totalJuros)}</td><td class="num">${fmtNum(r2(c.totalAcordo - c.totalJuros))}</td><td></td>${rat ? `<td class="num">${fmtNum(somaR.cond)}</td><td class="num">${fmtNum(somaR.hon)}</td>` : ''}</tr></tbody></table></div></details>`;
+    })() : ''}`;
 }
 
 function clausulasAcordo(a) {
@@ -717,11 +731,17 @@ function infoAcordo(a) {
 }
 
 function tabelaParcelasPDF(P, a, c) {
-  tabelaPDF(P, [{ t: 'Nº', w: 12 }, { t: 'Vencimento', w: 22, nw: true }, { t: 'Parcela', w: 24, a: 'r' }, { t: 'Juros', w: 22, a: 'r' }, { t: 'Amortização', w: 24, a: 'r' }, { t: 'Saldo devedor', w: 26, a: 'r' }], [
-    ...(c.sinal ? [{ c: ['Entrada', fmtData(a.sinal.data), fmtNum(c.sinal), '—', fmtNum(c.sinal), fmtNum(c.saldo)] }] : []),
-    ...c.plano.parcelas.map(p => ({ c: [String(p.n), fmtData(p.venc), fmtNum(p.valor), fmtNum(p.juros), fmtNum(p.amort), fmtNum(p.saldo)] })),
-    { c: ['Totais', '', fmtNum(c.totalAcordo), fmtNum(c.totalJuros), fmtNum(r2(c.totalAcordo - c.totalJuros)), ''], total: true },
+  const rat = c.propHon > 0;
+  const rc = v => { if (!rat) return []; const x = rateio(v, c.propHon); return [fmtNum(x.cond), fmtNum(x.hon)]; };
+  const valores = [...(c.sinal ? [c.sinal] : []), ...c.plano.parcelas.map(p => p.valor)];
+  const tot = valores.reduce((s, v) => { const x = rateio(v, c.propHon); return { cond: r2(s.cond + x.cond), hon: r2(s.hon + x.hon) }; }, { cond: 0, hon: 0 });
+  tabelaPDF(P, [{ t: 'Nº', w: 12 }, { t: 'Vencimento', w: 22, nw: true }, { t: 'Parcela', w: 24, a: 'r' }, { t: 'Juros', w: 22, a: 'r' }, { t: 'Amortização', w: 24, a: 'r' }, { t: 'Saldo devedor', w: 26, a: 'r' },
+    ...(rat ? [{ t: 'Condomínio', w: 24, a: 'r' }, { t: 'Honorários', w: 22, a: 'r' }] : [])], [
+    ...(c.sinal ? [{ c: ['Entrada', fmtData(a.sinal.data), fmtNum(c.sinal), '-', fmtNum(c.sinal), fmtNum(c.saldo), ...rc(c.sinal)] }] : []),
+    ...c.plano.parcelas.map(p => ({ c: [String(p.n), fmtData(p.venc), fmtNum(p.valor), fmtNum(p.juros), fmtNum(p.amort), fmtNum(p.saldo), ...rc(p.valor)] })),
+    { c: ['Totais', '', fmtNum(c.totalAcordo), fmtNum(c.totalJuros), fmtNum(r2(c.totalAcordo - c.totalJuros)), '', ...(rat ? [fmtNum(tot.cond), fmtNum(tot.hon)] : [])], total: true },
   ], 8);
+  if (rat) paragrafoPDF(P, `Rateio: ${fmtPct(r2(c.propHon * 100))}% de cada pagamento corresponde a honorários advocatícios, na proporção do débito negociado.`, 7.5, 'normal', COR_SUAVE);
 }
 
 function pdfAcordo(a, c, detalhe) {
@@ -790,7 +810,8 @@ function pdfExtratoAcordo(a, data) {
 
 // Proposta em Excel com fórmulas da Tabela Price (é possível mudar a taxa e o saldo na planilha)
 function xlsxAcordo(a, c) {
-  const LARG = [10, 14, 15, 14, 15, 16], cab = cabecalhoXLSX(LARG);
+  const rat = c.propHon > 0;
+  const LARG = [10, 14, 15, 14, 15, 16, ...(rat ? [15, 15] : [])], cab = cabecalhoXLSX(LARG);
   const L = [...cab.linhas, [{ v: a.situacao === 'proposta' ? 'Proposta de acordo' : 'Acordo', s: 'tit' }], ...infoAcordo(a).map(t => [t]), null];
   const param = (rot, cel) => { L.push([{ v: rot, s: 'b' }, null, null, null, cel]); return '$E$' + L.length; };
   const DEB = param('Débito atualizado', { v: c.deb.total, s: 'm' });
@@ -805,19 +826,25 @@ function xlsxAcordo(a, c) {
   const F1 = param('Fator de juros até a 1ª parcela', a.parcelamento.jurosAte1 === false ? { v: 1, s: 'f' } : { f: `(1+${TAXA})^(${DIAS1}/30)`, v: c.f1, s: 'f' });
   const PMT = param('Valor da parcela', a.parcelamento.modo === 'parcela' ? { v: c.plano.pmt, s: 'm' }
     : { f: `IF(${TAXA}=0,ROUND(${SALDO}/${N},2),ROUND(${SALDO}*${F1}*${TAXA}/((1-(1+${TAXA})^-${N})*(1+${TAXA})),2))`, v: c.plano.pmt, s: 'm' });
-  L.push(null, { c: ['Nº', 'Vencimento', 'Parcela', 'Juros', 'Amortização', 'Saldo devedor'].map(v => ({ v, s: 'cab' })), altura: 26 });
-  if (c.sinal) L.push(['Entrada', { v: a.sinal.data, s: 'd' }, { f: SIN, v: c.sinal, s: 'm' }, { v: 0, s: 'm' }, { f: SIN, v: c.sinal, s: 'm' }, { f: SALDO, v: c.saldo, s: 'm' }]);
+  // Rateio: parte de honorários advocatícios em cada pagamento (na proporção do débito negociado)
+  const PROP = rat ? param('Rateio: parte de honorários advocatícios', { v: c.propHon, s: 'p' }) : null;
+  const colsRat = n => rat ? [{ f: `C${n}-H${n}`, v: rateio(0, 0).cond, s: 'm' }, { f: `ROUND(C${n}*${PROP},2)`, v: 0, s: 'm' }] : [];
+  const comValores = (linha, valor) => { if (rat) { const x = rateio(valor, c.propHon); linha[6].v = x.cond; linha[7].v = x.hon; } return linha; };
+  L.push(null, { c: ['Nº', 'Vencimento', 'Parcela', 'Juros', 'Amortização', 'Saldo devedor', ...(rat ? ['Condomínio', 'Honorários'] : [])].map(v => ({ v, s: 'cab' })), altura: 26 });
+  if (c.sinal) { const n = L.length + 1; L.push(comValores(['Entrada', { v: a.sinal.data, s: 'd' }, { f: SIN, v: c.sinal, s: 'm' }, { v: 0, s: 'm' }, { f: SIN, v: c.sinal, s: 'm' }, { f: SALDO, v: c.saldo, s: 'm' }, ...colsRat(n)], c.sinal)); }
   const ini = L.length + 1;
   c.plano.parcelas.forEach((p, k) => {
     const n = L.length + 1, ant = k === 0 ? SALDO : 'F' + (n - 1), f = k === 0 ? F1 : `(1+${TAXA})`;
-    L.push([{ v: p.n, s: 'i' }, { v: p.venc, s: 'd' }, { f: k === c.plano.parcelas.length - 1 ? `${ant}+D${n}` : `MIN(${PMT},${ant}+D${n})`, v: p.valor, s: 'm' },
-      { f: `ROUND(${ant}*(${f}-1),2)`, v: p.juros, s: 'm' }, { f: `C${n}-D${n}`, v: p.amort, s: 'm' }, { f: `ROUND(${ant}+D${n}-C${n},2)`, v: p.saldo, s: 'm' }]);
+    L.push(comValores([{ v: p.n, s: 'i' }, { v: p.venc, s: 'd' }, { f: k === c.plano.parcelas.length - 1 ? `${ant}+D${n}` : `MIN(${PMT},${ant}+D${n})`, v: p.valor, s: 'm' },
+      { f: `ROUND(${ant}*(${f}-1),2)`, v: p.juros, s: 'm' }, { f: `C${n}-D${n}`, v: p.amort, s: 'm' }, { f: `ROUND(${ant}+D${n}-C${n},2)`, v: p.saldo, s: 'm' }, ...colsRat(n)], p.valor));
   });
   const fim = L.length, vz = { v: '', s: 'bt' };
-  if (c.plano.parcelas.length) L.push([{ v: 'Totais', s: 'bt' }, vz, { f: `SUM(C${ini}:C${fim})`, v: c.totalParcelas, s: 'mt' }, { f: `SUM(D${ini}:D${fim})`, v: c.totalJuros, s: 'mt' }, { f: `SUM(E${ini}:E${fim})`, v: r2(c.totalParcelas - c.totalJuros), s: 'mt' }, vz]);
+  const iniTot = c.sinal ? ini - 1 : ini;
+  const soma = col => ({ f: `SUM(${col}${iniTot}:${col}${fim})`, v: 0, s: 'mt' });
+  if (c.plano.parcelas.length) L.push([{ v: 'Totais', s: 'bt' }, vz, { f: `SUM(C${iniTot}:C${fim})`, v: c.totalAcordo, s: 'mt' }, { f: `SUM(D${ini}:D${fim})`, v: c.totalJuros, s: 'mt' }, { f: `SUM(E${iniTot}:E${fim})`, v: r2(c.totalAcordo - c.totalJuros), s: 'mt' }, vz, ...(rat ? [soma('G'), soma('H')] : [])]);
   L.push(null);
-  const mesclar = [];
-  clausulasAcordo(a).forEach(t => { L.push({ c: [{ v: t, s: 'tq' }], altura: Math.ceil(t.length / 95) * 13 + 2 }); mesclar.push(`A${L.length}:F${L.length}`); });
+  const mesclar = [], ultCol = rat ? 'H' : 'F';
+  clausulasAcordo(a).forEach(t => { L.push({ c: [{ v: t, s: 'tq' }], altura: Math.ceil(t.length / 95) * 13 + 2 }); mesclar.push(`A${L.length}:${ultCol}${L.length}`); });
   return gerarXLSX([{ nome: 'Acordo', linhas: L, larguras: LARG, imagem: cab.imagem, mesclar }]);
 }
 

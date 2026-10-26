@@ -402,9 +402,6 @@ a.link-cartao h2 { color: var(--pri); }
   .dev-linha button { grid-column: 2; grid-row: 1; }
 }
 .menu .link-instalar { color: var(--pri); font-weight: 600; }
-.bt-instalar-topo { margin-left: auto; white-space: nowrap; }
-.bt-instalar-topo:not([hidden]) + .topo-dir { margin-left: 12px; }
-@media (max-width: 420px) { .bt-instalar-topo { font-size: 11px; padding: 2px 6px; } }
 
 /* ---------- Acordos ---------- */
 .linha-cob { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--borda-suave); cursor: pointer; }
@@ -414,3 +411,18 @@ a.link-cartao h2 { color: var(--pri); }
 .sel-tipo { width: auto; min-width: 62px; }
 .campo-bt .sel-tipo { flex: 0 0 auto; }
 .tabela-parcelas { max-height: 420px; overflow: auto; }
+.abas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.abas a { padding: 7px 12px; border: 1px solid var(--borda); border-radius: 6px; text-decoration: none; background: var(--cartao); }
+.abas a.ativa { border-color: var(--pri); background: var(--pri-claro); font-weight: 600; }
+.texto-legal { max-width: 860px; line-height: 1.6; }
+.texto-legal h2 { margin-top: 0; }
+.texto-legal h3 { font-size: 14px; margin: 16px 0 4px; color: var(--pri); }
+.texto-legal p, .texto-legal li { margin: 4px 0; }
+.rodape-legal { margin-top: 24px; font-size: 12px; color: var(--suave); text-align: center; }
+.bt-manual { background: none; font-family: inherit; cursor: pointer; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600; border: 1px solid rgba(255,255,255,.4); border-radius: 5px; padding: 4px 10px; white-space: nowrap; }
+.bt-manual:hover { background: rgba(255,255,255,.15); }
+.acoes-topo { margin-left: auto; display: flex; gap: 8px; }
+.acoes-topo + .topo-dir { margin-left: 12px; }
+.bt-manual[hidden] { display: none; }
+.sumario-manual ol { columns: 2; column-gap: 32px; margin: 0; }
+@media (max-width: 600px) { .sumario-manual ol { columns: 1; } .bt-manual { padding: 3px 7px; font-size: 12px; } }

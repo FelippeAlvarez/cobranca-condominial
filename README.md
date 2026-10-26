@@ -15,4 +15,6 @@ Funciona no Google Chrome ou Microsoft Edge, sem instalação: abra o endereço 
 
 Veja [COMO USAR.txt](COMO%20USAR.txt).
 
+Manual de uso, termos de uso, privacidade e licenças: dentro do programa (menu "Sobre, termos e privacidade"). Veja também [LICENCA.txt](LICENCA.txt).
+
 Bibliotecas incluídas em `app/lib`: [jsPDF](https://github.com/parallax/jsPDF) (MIT) e [PDF.js](https://github.com/mozilla/pdf.js) (Apache 2.0).

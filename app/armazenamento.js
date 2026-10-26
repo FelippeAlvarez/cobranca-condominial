@@ -41,6 +41,18 @@ const Armaz = {
   dir: null,
   conflitos: [],
 
+  // Escolhe a pasta sem trocar ainda o local em uso (para "Mudar o local dos dados")
+  async escolherPasta() {
+    if (!('showDirectoryPicker' in window)) throw new Error('Este navegador não permite gravar em pastas. Use o Google Chrome ou o Microsoft Edge no computador.');
+    return window.showDirectoryPicker({ id: 'cobranca-condominial', mode: 'readwrite' });
+  },
+  async usarPasta(h) {
+    await IDB.set('kv', 'pasta', h);
+    this.dir = h;
+    this.modo = 'pasta';
+    localStorage.setItem('cc-modo', 'pasta');
+  },
+
   async conectarPasta() {
     if (!('showDirectoryPicker' in window)) throw new Error('Este navegador não permite gravar em pastas. Use o Google Chrome ou o Microsoft Edge no computador.');
     const h = await window.showDirectoryPicker({ id: 'cobranca-condominial', mode: 'readwrite' });
