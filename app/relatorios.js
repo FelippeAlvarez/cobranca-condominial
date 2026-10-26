@@ -28,13 +28,16 @@ function itensResumo(r) {
   const itens = [
     ['Cotas condominiais em aberto (valor originário)', r.tc.original],
     ['(+) Correção monetária', r.tc.correcao],
-    ['(+) Juros de mora', r.tc.juros],
-    ['(+) Multa', r.tc.multa],
-    ['(=) Débito condominial atualizado', r.tc.total, 'b'],
+    [r.amort.length ? '(+) Juros de mora (em aberto)' : '(+) Juros de mora', r.tc.juros],
+    [r.amort.length ? '(+) Multa (em aberto)' : '(+) Multa', r.tc.multa],
   ];
+  if (r.tc.amortizado > 0) itens.push(['(-) Principal quitado pelos pagamentos (corrigido)', -r.tc.amortizado]);
+  itens.push(['(=) Débito condominial atualizado', r.tc.total, 'b']);
   if (!r.p.embutir && r.honContr) itens.push([`(+) Honorários advocatícios contratuais (${fmtPct(r.p.honContr)}%)`, r.honContr]);
-  if (r.despesas.length) itens.push(['(+) Despesas (custas, certidões, registros e outras), corrigidas', r.td.corrigido]);
+  if (r.despesas.length) itens.push([r.td.pago ? '(+) Despesas corrigidas (saldo após os pagamentos)' : '(+) Despesas (custas, certidões, registros e outras), corrigidas', r.td.corrigido]);
   if (r.suc.tipo !== 'nenhum' && r.suc.valor) itens.push([r.suc.tipo === 'percentual' ? `(+) Honorários advocatícios sucumbenciais (${fmtPct(r.suc.pct)}%)` : '(+) Honorários advocatícios sucumbenciais', r.suc.valor]);
+  if (r.art523?.multa) itens.push([`(+) Multa do art. 523, § 1º, do CPC (${fmtPct(r.art523.multaPct)}% de ${fmtMoeda(r.art523.base)})`, r.art523.multa]);
+  if (r.art523?.hon) itens.push([`(+) Honorários advocatícios do art. 523, § 1º, do CPC (${fmtPct(r.art523.honPct)}% de ${fmtMoeda(r.art523.base)})`, r.art523.hon]);
   itens.push(['(=) Total devido', r.total, 'f']);
   return itens;
 }
@@ -43,8 +46,29 @@ function notasCalculo(r) {
   return [
     notaMetodo(r.p),
     notaFaltando(r.faltando),
+    notaEstimados(r.estimados),
+    r.excedente ? `Os pagamentos excederam o débito existente nas respectivas datas em ${fmtMoeda(r.excedente)} (valor nominal).` : '',
     r.aVencer.length ? `Não incluída(s) ${r.aVencer.length} cota(s) com vencimento a partir de ${fmtData(r.dataCalc)}.` : '',
   ].filter(Boolean);
+}
+
+const rotuloDestino = (cob, dest) => DESTINOS_PAGAMENTO[dest || 'proporcional']
+  || (() => { const c = (cob.cotas || []).find(x => x.id === dest); if (c) return 'Cota ' + mesNum(c.competencia); const d = (cob.despesas || []).find(x => x.id === dest); return d ? 'Despesa: ' + ([d.rubrica, d.descricao].filter(Boolean).join(' - ') || '') : '—'; })();
+
+// Demonstrativo de cada pagamento: saldo antes, valores imputados (principal, juros, multa) e saldo depois
+function pagamentosPDF(P, r) {
+  if (!r.amort.length) return;
+  subtituloPDF(P, 'Pagamentos recebidos');
+  const linhas = [];
+  for (const x of r.amort) {
+    const soma = k => x.imputado.reduce((s, l) => s + l[k], 0);
+    linhas.push({ c: [fmtData(x.data), fmtNum(x.valor), x.a.imputacao === 'principal' ? 'Principal primeiro' : 'Juros primeiro (art. 354 do CC)', rotuloDestino(r.cob, x.a.destino) + (x.a.noPrazo ? ' · no prazo do art. 523' : ''),
+      fmtNum(x.antes), fmtNum(soma('principal')), fmtNum(soma('juros')), fmtNum(soma('multa')), fmtNum(x.depois)] });
+  }
+  tabelaPDF(P, [{ t: 'Data', w: 18, nw: true }, { t: 'Valor pago', w: 20, a: 'r' }, { t: 'Imputação', w: 30 }, { t: 'Abatido de', w: 34 },
+    { t: 'Saldo antes', w: 22, a: 'r' }, { t: 'Principal', w: 20, a: 'r' }, { t: 'Juros', w: 18, a: 'r' }, { t: 'Multa', w: 18, a: 'r' }, { t: 'Saldo depois', w: 22, a: 'r' }], linhas, 8);
+  paragrafoPDF(P, 'Saldos das cotas e despesas atualizados até a data de cada pagamento. Os valores imputados estão em moeda da data do pagamento.', 7.5, 'normal', COR_SUAVE);
+  P.y += 2;
 }
 
 /* ================= PDF ================= */
@@ -68,27 +92,33 @@ function secaoCobrancaPDF(P, cob, r) {
   paragrafoPDF(P, descCriterios(r), 8, 'normal', COR_SUAVE);
   P.y += 3;
   subtituloPDF(P, 'Cotas condominiais em aberto');
+  const pag = r.amort.length > 0;
   if (r.cotas.length) {
     tabelaPDF(P, [
-      { t: 'Competência', w: 18, nw: true }, { t: 'Descrição', w: 40 }, { t: 'Vencimento', w: 20, nw: true }, { t: 'Valor originário', w: 22, a: 'r' },
+      { t: 'Competência', w: 18, nw: true }, { t: 'Descrição', w: 36 }, { t: 'Vencimento', w: 20, nw: true }, { t: 'Valor originário', w: 22, a: 'r' },
       { t: 'Fator de correção', w: 20, a: 'r' }, { t: 'Valor corrigido', w: 22, a: 'r' }, { t: 'Dias', w: 11, a: 'r' },
-      { t: 'Juros', w: 20, a: 'r' }, { t: 'Multa', w: 20, a: 'r' }, { t: 'Total', w: 24, a: 'r' },
+      { t: pag ? 'Juros (em aberto)' : 'Juros', w: 20, a: 'r' }, { t: pag ? 'Multa (em aberto)' : 'Multa', w: 20, a: 'r' },
+      ...(pag ? [{ t: 'Principal quitado', w: 22, a: 'r' }] : []), { t: 'Total', w: 24, a: 'r' },
     ], [
-      ...r.cotas.map(x => ({ c: [mesNum(x.c.competencia), x.c.descricao || 'Cota condominial', fmtData(x.c.vencimento), fmtNum(x.valor), fmtFator(x.e.fator), fmtNum(x.e.corrigido), String(x.e.dias), fmtNum(x.e.juros), fmtNum(x.e.multa), fmtNum(x.e.total)] })),
-      { c: ['Totais', '', '', fmtNum(r.tc.original), '', fmtNum(r.tc.corrigido), '', fmtNum(r.tc.juros), fmtNum(r.tc.multa), fmtNum(r.tc.total)], total: true },
+      ...r.cotas.map(x => ({ c: [mesNum(x.c.competencia), x.c.descricao || 'Cota condominial', fmtData(x.c.vencimento), fmtNum(x.valor), fmtFator(x.e.fator), fmtNum(x.e.corrigido), String(x.e.dias),
+        fmtNum(x.e.juros), fmtNum(x.e.multa), ...(pag ? [fmtNum(r2(x.e.corrigido - x.e.principal))] : []), fmtNum(x.e.total)] })),
+      { c: ['Totais', '', '', fmtNum(r.tc.original), '', fmtNum(r.tc.corrigido), '', fmtNum(r.tc.juros), fmtNum(r.tc.multa), ...(pag ? [fmtNum(r.tc.amortizado)] : []), fmtNum(r.tc.total)], total: true },
     ], 8);
   } else paragrafoPDF(P, 'Nenhuma cota vencida em aberto até a data do cálculo.', 8.5, 'italic', COR_SUAVE);
   if (r.despesas.length) {
     P.y += 2;
     subtituloPDF(P, 'Despesas');
+    const dp = r.td.pago > 0;
     tabelaPDF(P, [
-      { t: 'Data do pagamento', w: 20, nw: true }, { t: 'Rubrica', w: 40 }, { t: 'Descrição', w: 60 }, { t: 'Valor pago', w: 24, a: 'r' },
-      { t: 'Fator de correção', w: 20, a: 'r' }, { t: 'Valor corrigido', w: 24, a: 'r' },
+      { t: 'Data do pagamento', w: 20, nw: true }, { t: 'Rubrica', w: 36 }, { t: 'Descrição', w: dp ? 46 : 60 }, { t: 'Valor pago', w: 24, a: 'r' },
+      { t: 'Fator de correção', w: 20, a: 'r' }, { t: 'Valor corrigido', w: 24, a: 'r' }, ...(dp ? [{ t: 'Quitado', w: 20, a: 'r' }, { t: 'Saldo', w: 22, a: 'r' }] : []),
     ], [
-      ...r.despesas.map(x => ({ c: [fmtData(x.d.data), x.d.rubrica || '', descDespesa(x.d), fmtNum(x.valor), x.fator === 1 && x.d.corrigir === false ? 'sem correção' : fmtFator(x.fator), fmtNum(x.corrigido)] })),
-      { c: ['Totais', '', '', fmtNum(r.td.original), '', fmtNum(r.td.corrigido)], total: true },
+      ...r.despesas.map(x => ({ c: [fmtData(x.d.data), x.d.rubrica || '', descDespesa(x.d), fmtNum(x.valor), x.fator === 1 && x.d.corrigir === false ? 'sem correção' : fmtFator(x.fator), fmtNum(x.corrigido),
+        ...(dp ? [fmtNum(r2(x.corrigido - x.total)), fmtNum(x.total)] : [])] })),
+      { c: ['Totais', '', '', fmtNum(r.td.original), '', fmtNum(r.td.corrigidoBruto), ...(dp ? [fmtNum(r2(r.td.corrigidoBruto - r.td.corrigido)), fmtNum(r.td.corrigido)] : [])], total: true },
     ], 8);
   }
+  pagamentosPDF(P, r);
   subtituloPDF(P, 'Resumo');
   resumoPDF(P, itensResumo(r), P.W > 250 ? 140 : 120);
   notasCalculo(r).forEach(n => { paragrafoPDF(P, n, 7.5, 'normal', COR_SUAVE); P.y += 1; });
@@ -100,11 +130,12 @@ function linhasConsolidado(itens) {
   const tHon = itens.reduce((s, x) => s + cent(x.r.honContr), 0) / 100;
   const tDesp = itens.reduce((s, x) => s + cent(x.r.td.corrigido), 0) / 100;
   const tSuc = itens.reduce((s, x) => s + cent(x.r.suc.valor), 0) / 100;
+  const t523 = itens.reduce((s, x) => s + cent(x.r.art523?.total || 0), 0) / 100;
   const tDeb = itens.reduce((s, x) => s + cent(x.r.tc.total), 0) / 100;
   return {
     linhas: itens.map(({ cob, r }) => [nomeCond(cob), cob.unidade || '', devedoresCurto(cob), cob.tipo === 'judicial' ? 'Judicial' + (cob.processo ? ' ' + cob.processo : '') : 'Extrajudicial',
-      r.tc.original, r.tc.total, r.honContr, r.td.corrigido, r.suc.valor, r.total]),
-    totais: { original: itens.reduce((s, x) => s + cent(x.r.tc.original), 0) / 100, debito: tDeb, hon: tHon, desp: tDesp, suc: tSuc, total: t('total') },
+      r.tc.original, r.tc.total, r.honContr, r.td.corrigido, r.suc.valor, r.art523?.total || 0, r.total]),
+    totais: { original: itens.reduce((s, x) => s + cent(x.r.tc.original), 0) / 100, debito: tDeb, hon: tHon, desp: tDesp, suc: tSuc, a523: t523, total: t('total') },
   };
 }
 
@@ -118,14 +149,14 @@ function gerarPDFCobrancas({ titulo, linhasTitulo = [], cobs, dataCalc, nome }) 
   } else {
     tituloPDF(P, titulo, [...linhasTitulo, [`Valores atualizados até ${fmtData(dataCalc)}. ${itens.length} cobranças.`, 9, 'normal', COR_SUAVE]]);
     const { linhas, totais } = linhasConsolidado(itens);
-    const temHon = totais.hon > 0;
+    const temHon = totais.hon > 0, tem523 = totais.a523 > 0;
     const cols = [{ t: 'Condomínio', w: 42 }, { t: 'Unidade', w: 24 }, { t: 'Devedor(es)', w: 44 }, { t: 'Cobrança', w: 28 },
       { t: 'Valor originário', w: 22, a: 'r' }, { t: 'Débito atualizado', w: 24, a: 'r' }, ...(temHon ? [{ t: 'Honorários contratuais', w: 22, a: 'r' }] : []),
-      { t: 'Despesas', w: 20, a: 'r' }, { t: 'Honorários sucumbenciais', w: 22, a: 'r' }, { t: 'Total', w: 24, a: 'r' }];
-    const fmtL = l => { const v = l.slice(4).map(fmtNum); if (!temHon) v.splice(2, 1); return [...l.slice(0, 4), ...v]; };
+      { t: 'Despesas', w: 20, a: 'r' }, { t: 'Honorários sucumbenciais', w: 22, a: 'r' }, ...(tem523 ? [{ t: 'Art. 523 (multa e honorários)', w: 22, a: 'r' }] : []), { t: 'Total', w: 24, a: 'r' }];
+    const fmtL = l => { const v = l.slice(4).map(fmtNum); if (!tem523) v.splice(5, 1); if (!temHon) v.splice(2, 1); return [...l.slice(0, 4), ...v]; };
     tabelaPDF(P, cols, [
       ...linhas.map(l => ({ c: fmtL(l) })),
-      { c: fmtL(['Totais', '', '', '', totais.original, totais.debito, totais.hon, totais.desp, totais.suc, totais.total]), total: true },
+      { c: fmtL(['Totais', '', '', '', totais.original, totais.debito, totais.hon, totais.desp, totais.suc, totais.a523, totais.total]), total: true },
     ], 8);
     for (const { cob, r } of itens) { P.novaPagina(); secaoCobrancaPDF(P, cob, r); }
   }
@@ -205,7 +236,10 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   const DATA = param('Data do cálculo', { v: r.dataCalc, s: 'd' });
   param('Correção monetária', descIndice(p));
   const MULTA = param('Multa', { v: p.multa / 100, s: 'p' });
-  const JUROS = param('Juros de mora ao mês (pro rata die)', { v: p.juros / 100, s: 'p' });
+  // Fora do caso simples (pagamentos, art. 523, taxa legal, SELIC ou Lei 14.905), a planilha traz os valores calculados
+  const simples = r.simples;
+  const JUROS = simples ? param('Juros de mora ao mês (pro rata die)', { v: p.juros / 100, s: 'p' })
+    : (param('Juros de mora', descJuros(p) + (p.lei14905 ? '; a partir de 30/08/2024, IPCA e taxa legal (Lei 14.905/2024)' : '')), null);
   const HON = !p.embutir && p.honContr ? param('Honorários advocatícios contratuais', { v: p.honContr / 100, s: 'p' }) : null;
   const SUC = r.suc.tipo === 'percentual' ? param('Honorários advocatícios sucumbenciais', { v: r.suc.pct / 100, s: 'p' }) : null;
   const fator = x => formulaFator(p, x, DATA, ultIdx);
@@ -216,15 +250,20 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   L.push({ c: ['Competência', 'Descrição', 'Vencimento', 'Valor originário', 'Fator de correção', 'Valor corrigido', 'Dias de atraso', 'Juros', 'Multa', 'Total'].map(v => ({ v, s: 'cab' })), altura: 30 });
   const ini = L.length + 1;
   const linhaCota = (x) => {
+    if (!simples) {
+      L.push([mesNum(x.c.competencia), x.c.descricao || 'Cota condominial', { v: x.c.vencimento, s: 'd' }, { v: x.valor, s: 'm' }, { v: x.e.fator, s: 'f' },
+        { v: x.e.corrigido, s: 'm' }, { v: x.e.dias, s: 'i' }, { v: x.e.juros, s: 'm' }, { v: x.e.multa, s: 'm' }, { v: x.e.total, s: 'm' }]);
+      return;
+    }
     const n = L.length + 1, se = (f, v, s) => ({ f: `IF(D${n}="","",${f})`, v, s });
     L.push([x ? mesNum(x.c.competencia) : null, x ? x.c.descricao || 'Cota condominial' : null, { v: x ? x.c.vencimento : '', s: 'd' }, { v: x ? x.valor : '', s: 'm' },
       se(fator('C' + n), x?.e.fator, 'f'), se(`ROUND(D${n}*E${n},2)`, x?.e.corrigido, 'm'), se(`MAX(0,${DATA}-C${n})`, x?.e.dias, 'i'),
       se(`ROUND(F${n}*${JUROS}/30*G${n},2)`, x?.e.juros, 'm'), se(`IF(G${n}>0,ROUND(F${n}*${MULTA},2),0)`, x?.e.multa, 'm'), se(`F${n}+H${n}+I${n}`, x?.e.total, 'm')]);
   };
   r.cotas.forEach(linhaCota);
-  for (let i = 0; i < LINHAS_EXTRAS_COTAS; i++) linhaCota(null);
+  if (simples) for (let i = 0; i < LINHAS_EXTRAS_COTAS; i++) linhaCota(null);
   const fim = L.length, nt = L.length + 1;
-  const soma = (col, v, de, ate) => ({ f: `SUM(${col}${de}:${col}${ate})`, v, s: 'mt' });
+  const soma = (col, v, de, ate) => ate >= de ? { f: `SUM(${col}${de}:${col}${ate})`, v, s: 'mt' } : { v: 0, s: 'mt' };
   L.push([{ v: 'Totais', s: 'bt' }, vz, vz, soma('D', r.tc.original, ini, fim), vz, soma('F', r.tc.corrigido, ini, fim), vz, soma('H', r.tc.juros, ini, fim), soma('I', r.tc.multa, ini, fim), soma('J', r.tc.total, ini, fim)]);
 
   // Despesas
@@ -232,19 +271,21 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   L.push({ c: ['Data do pagamento', 'Rubrica', 'Descrição', 'Valor pago', 'Fator de correção', 'Valor corrigido'].map(v => ({ v, s: 'cab' })), altura: 30 });
   const di = L.length + 1;
   const linhaDesp = (x) => {
+    if (!simples) { L.push([{ v: x.d.data, s: 'd' }, x.d.rubrica || '', descDespesa(x.d), { v: x.valor, s: 'm' }, { v: x.fator, s: 'f' }, { v: x.total, s: 'm' }]); return; }
     const n = L.length + 1;
     const fat = x && x.d.corrigir === false ? { v: 1, s: 'f' } : { f: `IF(D${n}="","",${fator('A' + n)})`, v: x?.fator, s: 'f' };
     L.push([{ v: x ? x.d.data : '', s: 'd' }, x ? x.d.rubrica || '' : null, x ? descDespesa(x.d) : null, { v: x ? x.valor : '', s: 'm' }, fat, { f: `IF(D${n}="","",ROUND(D${n}*E${n},2))`, v: x?.corrigido, s: 'm' }]);
   };
   r.despesas.forEach(linhaDesp);
-  for (let i = 0; i < LINHAS_EXTRAS_DESP; i++) linhaDesp(null);
+  if (simples) for (let i = 0; i < LINHAS_EXTRAS_DESP; i++) linhaDesp(null);
   const df = L.length;
   L.push([{ v: 'Totais', s: 'bt' }, vz, vz, soma('D', r.td.original, di, df), vz, soma('F', r.td.corrigido, di, df)]);
   const refDesp = 'F' + L.length;
 
   L.push(null, [{ v: 'Resumo', s: 'b' }]);
   const linhaRes = (rotulo, cel, total) => { L.push([{ v: rotulo, s: total ? 'bt' : 'b' }, ...(total ? Array(8).fill(vz) : Array(8).fill(null)), { ...cel, s: total ? 'mt' : 'm' }]); return 'J' + L.length; };
-  const refDeb = linhaRes('Débito condominial atualizado (valor corrigido + juros + multa)', { f: `J${nt}`, v: r.tc.total });
+  if (r.tc.amortizado > 0) linhaRes('Principal quitado pelos pagamentos (já abatido do total das cotas)', { v: r.tc.amortizado });
+  const refDeb = linhaRes(r.tc.amortizado > 0 ? 'Débito condominial atualizado (saldo após os pagamentos)' : 'Débito condominial atualizado (valor corrigido + juros + multa)', { f: `J${nt}`, v: r.tc.total });
   const partes = [refDeb];
   let refHon = null;
   if (HON) { refHon = linhaRes('Honorários advocatícios contratuais', { f: `ROUND(${refDeb}*${HON},2)`, v: r.honContr }); partes.push(refHon); }
@@ -254,13 +295,18 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
     const base = [refDeb, refHon, cob.sucumbencia?.baseDespesas ? refDespRes : null].filter(Boolean).join('+');
     partes.push(linhaRes('Honorários advocatícios sucumbenciais', { f: `ROUND((${base})*${SUC},2)`, v: r.suc.valor }));
   } else if (r.suc.tipo === 'fixo' && r.suc.valor) partes.push(linhaRes('Honorários advocatícios sucumbenciais' + (r.suc.fator !== 1 ? ` (${fmtMoeda(r.suc.original)} corrigidos, fator ${fmtFator(r.suc.fator)})` : ''), { v: r.suc.valor }));
+  let ref523 = null;
+  if (r.art523?.multa) { ref523 = linhaRes(`Multa do art. 523, § 1º, do CPC (${fmtPct(r.art523.multaPct)}% de ${fmtMoeda(r.art523.base)})`, { v: r.art523.multa }); partes.push(ref523); }
+  if (r.art523?.hon) { const h = linhaRes(`Honorários advocatícios do art. 523, § 1º, do CPC (${fmtPct(r.art523.honPct)}% de ${fmtMoeda(r.art523.base)})`, { v: r.art523.hon }); partes.push(h); ref523 = ref523 ? ref523 + '+' + h : h; }
   const refTotal = linhaRes('Total devido', { f: partes.join('+'), v: r.total }, true);
   L.push(null);
-  [descCriterios(r), ...notasCalculo(r),
+  const notasExcel = simples ? [
     'Para incluir meses ou despesas, preencha as linhas em branco das tabelas (para as cotas: competência, descrição, vencimento e valor originário). A correção, os juros e a multa são calculados e somados aos totais. Para mais linhas, insira-as antes da última linha em branco e copie as fórmulas da linha de cima.',
-    'Alterando a data do cálculo ou os percentuais, todos os valores são recalculados, inclusive os fatores de correção (índices na folha "Índices").']
+    'Alterando a data do cálculo ou os percentuais, todos os valores são recalculados, inclusive os fatores de correção (índices na folha "Índices").',
+  ] : ['Este cálculo tem pagamentos, art. 523 do CPC ou juros pela taxa legal, SELIC ou Lei 14.905: os valores foram calculados pelo programa e estão fixos nesta planilha. Para alterar, use o programa e gere a planilha de novo.'];
+  [descCriterios(r), ...notasCalculo(r), ...notasExcel]
     .forEach(n => { L.push({ c: [{ v: n, s: 'tq' }], altura: Math.ceil(n.length / 150) * 13 + 2 }); mesclar.push(`A${L.length}:J${L.length}`); });
-  return { nome: nomeFolha, linhas: L, larguras: LARG, imagem: cab.imagem, mesclar, refs: { original: 'D' + nt, debito: refDeb, hon: refHon, desp: refDesp, total: refTotal } };
+  return { nome: nomeFolha, linhas: L, larguras: LARG, imagem: cab.imagem, mesclar, refs: { original: 'D' + nt, debito: refDeb, hon: refHon, desp: refDesp, a523: ref523, total: refTotal } };
 }
 
 function nomeFolhaUnico(base, usados) {
@@ -280,7 +326,7 @@ function gerarXLSXCobrancas({ titulo, linhasTitulo = [], cobs, dataCalc }) {
   if (itens.length === 1) return gerarXLSX([...folhas, ...fimIdx]);
   const LARG = [30, 18, 34, 22, 15, 15, 15, 13, 15, 15], cab = cabecalhoXLSX(LARG);
   const L = [...cab.linhas, [{ v: titulo, s: 'tit' }], ...linhasTitulo.map(t => [Array.isArray(t) ? t[0] : t]), [`Valores atualizados até ${fmtData(dataCalc)}.`], null];
-  L.push({ c: ['Condomínio', 'Unidade', 'Devedor(es)', 'Cobrança', 'Valor originário', 'Débito atualizado', 'Honorários contratuais', 'Despesas', 'Honorários sucumbenciais', 'Total'].map(v => ({ v, s: 'cab' })), altura: 30 });
+  L.push({ c: ['Condomínio', 'Unidade', 'Devedor(es)', 'Cobrança', 'Valor originário', 'Débito atualizado', 'Honorários contratuais', 'Despesas', itens.some(x => x.r.art523) ? 'Honorários sucumbenciais e art. 523' : 'Honorários sucumbenciais', 'Total'].map(v => ({ v, s: 'cab' })), altura: 30 });
   const ini = L.length + 1;
   const ref = (f, cel) => cel ? `'${f.nome.replace(/'/g, "''")}'!${cel}` : null;
   itens.forEach(({ cob, r }, i) => {
@@ -294,7 +340,7 @@ function gerarXLSXCobrancas({ titulo, linhasTitulo = [], cobs, dataCalc }) {
   const fim = L.length;
   const { totais } = linhasConsolidado(itens);
   const vz = { v: '', s: 'bt' };
-  L.push([{ v: 'Totais', s: 'bt' }, vz, vz, vz, ...[totais.original, totais.debito, totais.hon, totais.desp, totais.suc, totais.total].map((v, j) => ({ f: `SUM(${LETRAS[4 + j]}${ini}:${LETRAS[4 + j]}${fim})`, v, s: 'mt' }))]);
+  L.push([{ v: 'Totais', s: 'bt' }, vz, vz, vz, ...[totais.original, totais.debito, totais.hon, totais.desp, r2(totais.suc + (totais.a523 || 0)), totais.total].map((v, j) => ({ f: `SUM(${LETRAS[4 + j]}${ini}:${LETRAS[4 + j]}${fim})`, v, s: 'mt' }))]);
   L.push(null, ['O detalhamento de cada cobrança está nas folhas seguintes.']);
   return gerarXLSX([{ nome: 'Resumo', linhas: L, larguras: LARG, imagem: cab.imagem, congelar: ini - 1 }, ...folhas, ...fimIdx]);
 }

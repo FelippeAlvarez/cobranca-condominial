@@ -1,7 +1,7 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.3.0';
+const VERSAO = '1.4.0';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, acordos: {}, carregadoEm: 0 };
@@ -221,11 +221,18 @@ function telaCondominios() {
 function camposEncargosHTML(valores, herdado, rotuloHerda) {
   const v = k => vazio(valores?.[k]) ? '' : valores[k];
   const ph = k => herdado ? `placeholder="${esc(fmtPct(herdado[k]))} (${rotuloHerda})"` : '';
-  const emb = vazio(valores?.embutir) ? '' : (valores.embutir === true || valores.embutir === 'sim') ? 'sim' : 'nao';
+  const sn = k => vazio(valores?.[k]) ? '' : (valores[k] === true || valores[k] === 'sim') ? 'sim' : 'nao';
+  const emb = sn('embutir'), lei = sn('lei14905'), tj = v('tipoJuros');
   return `<div class="grade-form">
     <div class="campo"><label>Índice de correção</label><select data-p="indice">${herdado ? `<option value="">${esc(herdado.indice)} (${rotuloHerda})</option>` : ''}${INDICES.map(i => `<option ${v('indice') === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
+    <div class="campo"><label>Juros de mora</label><select data-p="tipoJuros">${herdado ? `<option value="">${esc(TIPOS_JUROS[herdado.tipoJuros] || TIPOS_JUROS.mensal)} (${rotuloHerda})</option>` : ''}
+      ${Object.entries(TIPOS_JUROS).map(([k, t]) => `<option value="${k}" ${tj === k || (!herdado && !tj && k === 'mensal') ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="campo"><label>Juros (% ao mês)</label><input data-p="juros" inputmode="decimal" value="${esc(v('juros') === '' ? '' : fmtPct(v('juros')))}" ${ph('juros')}><small>Para "Percentual ao mês".</small></div>
     <div class="campo"><label>Multa (%)</label><input data-p="multa" inputmode="decimal" value="${esc(v('multa') === '' ? '' : fmtPct(v('multa')))}" ${ph('multa')}></div>
-    <div class="campo"><label>Juros de mora (% ao mês)</label><input data-p="juros" inputmode="decimal" value="${esc(v('juros') === '' ? '' : fmtPct(v('juros')))}" ${ph('juros')}></div>
+    <div class="campo w2"><label>Lei 14.905/2024</label><select data-p="lei14905">
+      ${herdado ? `<option value="">${herdado.lei14905 ? 'Aplicar' : 'Não aplicar'} (${rotuloHerda})</option>` : ''}
+      <option value="nao" ${lei === 'nao' || (!herdado && lei !== 'sim') ? 'selected' : ''}>Não aplicar</option><option value="sim" ${lei === 'sim' ? 'selected' : ''}>Aplicar: a partir de 30/08/2024, IPCA e taxa legal</option></select>
+      <small>Se aplicada, a partir de 30/08/2024 a correção passa a ser pelo IPCA e os juros pela taxa legal (art. 406 do CC).</small></div>
     <div class="campo"><label>Honorários contratuais (%)</label><input data-p="honContr" inputmode="decimal" value="${esc(v('honContr') === '' ? '' : fmtPct(v('honContr')))}" ${ph('honContr')}></div>
     <div class="campo w2"><label>Honorários contratuais na planilha</label><select data-p="embutir">
       ${herdado ? `<option value="">${herdado.embutir ? 'Embutidos no valor das cotas' : 'Em linha separada'} (${rotuloHerda})</option>` : ''}
@@ -238,11 +245,11 @@ function lerEncargos(raiz, permiteVazio) {
   const p = {};
   $$('[data-p]', raiz).forEach(el => {
     const k = el.dataset.p, val = el.value.trim();
-    if (k === 'indice') p[k] = val;
-    else if (k === 'embutir') p[k] = val === '' ? '' : val === 'sim';
+    if (k === 'indice' || k === 'tipoJuros') p[k] = val;
+    else if (k === 'embutir' || k === 'lei14905') p[k] = val === '' ? '' : val === 'sim';
     else p[k] = val === '' ? '' : parseValor(val);
   });
-  if (!permiteVazio) for (const k of ['multa', 'juros', 'honContr']) if (p[k] === '') p[k] = 0;
+  if (!permiteVazio) { for (const k of ['multa', 'juros', 'honContr']) if (p[k] === '') p[k] = 0; if (!p.tipoJuros) p.tipoJuros = 'mensal'; }
   return p;
 }
 
@@ -323,6 +330,7 @@ function telaCobranca(id, params) {
   const cob = nova ? novaCobranca(params.get('cond') || '') : structuredClone(original);
   cob.devedores = cob.devedores?.length ? cob.devedores : [{ nome: '', documento: '', endereco: '' }];
   cob.cotas = cob.cotas || []; cob.despesas = cob.despesas || []; cob.params = cob.params || {}; cob.sucumbencia = cob.sucumbencia || { tipo: 'nenhum' };
+  cob.pagamentos = cob.pagamentos || []; cob.art523 = { ...ART523_PADRAO, ...(cob.art523 || {}) };
   const st = { data: hoje() };
   if (!Object.keys(D.condominios).length) {
     $('#conteudo').innerHTML = cabecalho('Nova cobrança', '', '', '#/inicio') + '<div class="cartao"><p>Cadastre antes o condomínio (credor).</p><a class="bt primario" href="#/condominio/novo">Novo condomínio</a></div>';
@@ -372,6 +380,22 @@ function telaCobranca(id, params) {
     </div>
     <p class="dica">Percentual: incide sobre o débito atualizado (cotas com correção, juros e multa, mais os honorários contratuais), e também sobre as despesas se marcado.</p></div>
 
+  <div class="cartao"><div class="cartao-cab"><h2>Pagamentos recebidos (amortizações)</h2><button class="bt pequeno" id="btAddPag">+ Adicionar pagamento</button></div>
+    <p class="dica">Pagamentos parciais do devedor. O débito é atualizado até a data de cada pagamento e o valor é abatido. Imputação "Juros primeiro": juros e multa vencidos, depois o principal (art. 354 do CC).</p>
+    <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Data</th><th class="num">Valor</th><th>Imputação</th><th>Abater de</th><th class="cen so-523">No prazo do art. 523</th><th>Observação</th><th></th></tr></thead><tbody id="pagamentos"></tbody></table></div></div>
+
+  <div class="cartao so-judicial"><h2>Art. 523, § 1º, do CPC (cumprimento de sentença)</h2>
+    <label class="inline"><input type="checkbox" id="a523Aplicar"> Incluir multa e honorários do art. 523 (débito não pago no prazo de 15 dias)</label>
+    <div id="a523Campos" class="grade-form" style="margin-top:10px">
+      <div class="campo"><label class="inline"><input type="checkbox" id="a523IncMulta"> Multa (%)</label><input id="a523Multa" inputmode="decimal"></div>
+      <div class="campo"><label class="inline"><input type="checkbox" id="a523IncHon"> Honorários (%)</label><input id="a523Hon" inputmode="decimal"></div>
+      <div class="campo w2"><label>Base, além das cotas atualizadas</label>
+        <label class="inline"><input type="checkbox" id="a523BaseHon"> Honorários contratuais</label>
+        <label class="inline"><input type="checkbox" id="a523BaseDesp"> Despesas</label>
+        <label class="inline"><input type="checkbox" id="a523BaseSuc"> Honorários sucumbenciais</label></div>
+      <p class="dica wfull">Calculados sobre o débito atualizado até a data do cálculo. Pagamentos feitos no prazo (marque "No prazo do art. 523" no pagamento) reduzem a base (§ 2º); os demais, não.</p>
+    </div></div>
+
   <div class="cartao destaque"><div class="cartao-cab"><h2>Cálculo</h2><label class="inline">Atualizar até <input type="date" id="calcData" value="${st.data}"></label></div>
     <div class="colunas2"><div id="calcResumo" class="resumo"></div><div><p id="calcCrit" class="dica"></p><div id="calcAvisos"></div></div></div>
     <details class="detalhes"><summary>Ver o cálculo de cada cota</summary><div id="calcDet" class="rolagem"></div></details>
@@ -385,7 +409,7 @@ function telaCobranca(id, params) {
   const alterado = () => { marcarSujo(); recalcularLogo(); };
   $$('[data-c]').forEach(el => el.addEventListener('input', () => { cob[el.dataset.c] = el.value; alterado(); }));
   $$('[data-c]').forEach(el => el.addEventListener('change', () => { if (el.dataset.c === 'condominioId') desenharEncargos(); }));
-  const mostrarJudicial = () => $$('.so-judicial').forEach(e => { e.hidden = cob.tipo !== 'judicial'; });
+  const mostrarJudicial = () => { $$('.so-judicial').forEach(e => { e.hidden = cob.tipo !== 'judicial'; }); if ($('#a523Campos')) mostrar523(); };
   $$('input[name=tipo]').forEach(r => r.addEventListener('change', () => { cob.tipo = r.value; mostrarJudicial(); alterado(); }));
   mostrarJudicial();
 
@@ -480,7 +504,7 @@ function telaCobranca(id, params) {
   function desenharEncargos() {
     const herd = paramsCobranca({ condominioId: cob.condominioId, params: {} });
     $('#encCampos').innerHTML = camposEncargosHTML(cob.params, herd, cob.condominioId ? 'do condomínio' : 'padrão');
-    $$('#encCampos [data-p]').forEach(el => el.addEventListener('input', () => { cob.params = lerEncargos($('#encCampos'), true); alterado(); }));
+    $$('#encCampos [data-p]').forEach(el => ['input', 'change'].forEach(ev => el.addEventListener(ev, () => { cob.params = lerEncargos($('#encCampos'), true); alterado(); })));
     recalcular();
   }
 
@@ -500,6 +524,54 @@ function telaCobranca(id, params) {
   ['sucBaseDesp', 'sucCorrigir', 'sucTipo'].forEach(i => $('#' + i).addEventListener('change', lerSuc));
   mostrarSuc();
 
+  // ---- Pagamentos (amortizações)
+  const opcoesDestino = sel => {
+    const cotas = cob.cotas.filter(c => !c.pago && Number(c.valor) > 0 && c.vencimento).sort((a, b) => comparar(a.vencimento, b.vencimento));
+    const desps = cob.despesas.filter(d => Number(d.valor) > 0);
+    return Object.entries(DESTINOS_PAGAMENTO).map(([k, t]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${t}</option>`).join('')
+      + (cotas.length ? `<optgroup label="Uma cota">${cotas.map(c => `<option value="${c.id}" ${sel === c.id ? 'selected' : ''}>${esc(mesNum(c.competencia) + ' ' + (c.descricao || 'Cota'))}</option>`).join('')}</optgroup>` : '')
+      + (desps.length ? `<optgroup label="Uma despesa">${desps.map(d => `<option value="${d.id}" ${sel === d.id ? 'selected' : ''}>${esc([d.rubrica, d.descricao].filter(Boolean).join(' - ') || 'Despesa')}</option>`).join('')}</optgroup>` : '');
+  };
+  function mostrar523() { const v = cob.tipo === 'judicial' && cob.art523.aplicar; $$('.so-523').forEach(e => { e.hidden = !v; }); $('#a523Campos').hidden = !cob.art523.aplicar; }
+  function desenharPagamentos() {
+    $('#pagamentos').innerHTML = cob.pagamentos.map((a, i) => `<tr data-i="${i}">
+      <td><input type="date" data-k="data" value="${esc(a.data || '')}"></td>
+      <td><input data-k="valor" class="num" inputmode="decimal" value="${a.valor ? fmtNum(a.valor) : ''}"></td>
+      <td><select data-k="imputacao"><option value="juros">Juros primeiro</option><option value="principal" ${a.imputacao === 'principal' ? 'selected' : ''}>Principal primeiro</option></select></td>
+      <td><select data-k="destino">${opcoesDestino(a.destino || 'proporcional')}</select></td>
+      <td class="cen so-523"><input type="checkbox" data-k="noPrazo" ${a.noPrazo ? 'checked' : ''}></td>
+      <td><input data-k="obs" value="${esc(a.obs || '')}"></td>
+      <td><button class="bt-x" title="Remover">&times;</button></td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Nenhum pagamento lançado.</td></tr>';
+    $$('#pagamentos tr[data-i]').forEach(tr => {
+      const a = cob.pagamentos[+tr.dataset.i];
+      $$('[data-k]', tr).forEach(inp => inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'input', () => {
+        const k = inp.dataset.k;
+        if (k === 'valor') a.valor = r2(parseValor(inp.value)); else if (k === 'noPrazo') a.noPrazo = inp.checked; else a[k] = inp.value;
+        alterado();
+      }));
+      $('[data-k=valor]', tr).addEventListener('change', e => { e.target.value = a.valor ? fmtNum(a.valor) : ''; });
+      $('.bt-x', tr).addEventListener('click', () => { cob.pagamentos.splice(+tr.dataset.i, 1); desenharPagamentos(); alterado(); });
+    });
+    mostrar523();
+  }
+  $('#btAddPag').addEventListener('click', () => { cob.pagamentos.push({ id: novoId(), data: hoje(), valor: 0, imputacao: 'juros', destino: 'proporcional' }); desenharPagamentos(); marcarSujo(); });
+  desenharPagamentos();
+
+  // ---- Art. 523
+  const a5 = cob.art523;
+  $('#a523Aplicar').checked = !!a5.aplicar; $('#a523IncMulta').checked = a5.incluirMulta !== false; $('#a523IncHon').checked = a5.incluirHonorarios !== false;
+  $('#a523Multa').value = fmtPct(a5.multa); $('#a523Hon').value = fmtPct(a5.honorarios);
+  $('#a523BaseHon').checked = !!a5.baseHonContr; $('#a523BaseDesp').checked = !!a5.baseDespesas; $('#a523BaseSuc').checked = !!a5.baseSuc;
+  const ler523 = () => {
+    Object.assign(cob.art523, { aplicar: $('#a523Aplicar').checked, incluirMulta: $('#a523IncMulta').checked, incluirHonorarios: $('#a523IncHon').checked,
+      multa: parseValor($('#a523Multa').value), honorarios: parseValor($('#a523Hon').value),
+      baseHonContr: $('#a523BaseHon').checked, baseDespesas: $('#a523BaseDesp').checked, baseSuc: $('#a523BaseSuc').checked });
+    mostrar523(); alterado();
+  };
+  ['a523Aplicar', 'a523IncMulta', 'a523IncHon', 'a523BaseHon', 'a523BaseDesp', 'a523BaseSuc'].forEach(i => $('#' + i).addEventListener('change', ler523));
+  ['a523Multa', 'a523Hon'].forEach(i => $('#' + i).addEventListener('input', ler523));
+  mostrar523();
+
   // ---- Cálculo
   let tmr;
   function recalcularLogo() { clearTimeout(tmr); tmr = setTimeout(recalcular, 250); }
@@ -511,9 +583,12 @@ function telaCobranca(id, params) {
     $('#calcCrit').textContent = descCriterios(r);
     $('#calcAvisos').innerHTML = notasCalculo(r).slice(1).map(n => `<p class="alerta">${esc(n)}</p>`).join('')
       + (r.p.embutir ? `<p class="dica">Honorários contratuais de ${fmtPct(r.p.honContr)}% embutidos no valor originário das cotas.</p>` : '');
-    $('#calcDet').innerHTML = r.cotas.length ? `<table class="tabela"><thead><tr><th>Competência</th><th>Vencimento</th><th class="num">Valor originário</th><th class="num">Fator</th><th class="num">Corrigido</th><th class="num">Dias</th><th class="num">Juros</th><th class="num">Multa</th><th class="num">Total</th></tr></thead><tbody>
-      ${r.cotas.map(x => `<tr><td>${mesNum(x.c.competencia)} ${esc(x.c.descricao && x.c.descricao !== 'Cota condominial' ? '· ' + x.c.descricao : '')}</td><td>${fmtData(x.c.vencimento)}</td><td class="num">${fmtNum(x.valor)}</td><td class="num">${fmtFator(x.e.fator)}</td><td class="num">${fmtNum(x.e.corrigido)}</td><td class="num">${x.e.dias}</td><td class="num">${fmtNum(x.e.juros)}</td><td class="num">${fmtNum(x.e.multa)}</td><td class="num">${fmtNum(x.e.total)}</td></tr>`).join('')}
-      <tr class="subtotal"><td>Totais</td><td></td><td class="num">${fmtNum(r.tc.original)}</td><td></td><td class="num">${fmtNum(r.tc.corrigido)}</td><td></td><td class="num">${fmtNum(r.tc.juros)}</td><td class="num">${fmtNum(r.tc.multa)}</td><td class="num">${fmtNum(r.tc.total)}</td></tr></tbody></table>` : '<p class="vazio">Nenhuma cota vencida em aberto até a data.</p>';
+    const pg = r.amort.length > 0;
+    $('#calcDet').innerHTML = (r.cotas.length ? `<table class="tabela"><thead><tr><th>Competência</th><th>Vencimento</th><th class="num">Valor originário</th><th class="num">Fator</th><th class="num">Corrigido</th><th class="num">Dias</th><th class="num">Juros${pg ? ' (em aberto)' : ''}</th><th class="num">Multa${pg ? ' (em aberto)' : ''}</th>${pg ? '<th class="num">Principal quitado</th>' : ''}<th class="num">Total</th></tr></thead><tbody>
+      ${r.cotas.map(x => `<tr><td>${mesNum(x.c.competencia)} ${esc(x.c.descricao && x.c.descricao !== 'Cota condominial' ? '· ' + x.c.descricao : '')}</td><td>${fmtData(x.c.vencimento)}</td><td class="num">${fmtNum(x.valor)}</td><td class="num">${fmtFator(x.e.fator)}</td><td class="num">${fmtNum(x.e.corrigido)}</td><td class="num">${x.e.dias}</td><td class="num">${fmtNum(x.e.juros)}</td><td class="num">${fmtNum(x.e.multa)}</td>${pg ? `<td class="num">${fmtNum(r2(x.e.corrigido - x.e.principal))}</td>` : ''}<td class="num">${fmtNum(x.e.total)}</td></tr>`).join('')}
+      <tr class="subtotal"><td>Totais</td><td></td><td class="num">${fmtNum(r.tc.original)}</td><td></td><td class="num">${fmtNum(r.tc.corrigido)}</td><td></td><td class="num">${fmtNum(r.tc.juros)}</td><td class="num">${fmtNum(r.tc.multa)}</td>${pg ? `<td class="num">${fmtNum(r.tc.amortizado)}</td>` : ''}<td class="num">${fmtNum(r.tc.total)}</td></tr></tbody></table>` : '<p class="vazio">Nenhuma cota vencida em aberto até a data.</p>')
+      + (pg ? `<h3 style="font-size:13px;margin:14px 0 6px">Pagamentos</h3><table class="tabela"><thead><tr><th>Data</th><th class="num">Valor pago</th><th>Abatido de</th><th class="num">Saldo antes</th><th class="num">Principal</th><th class="num">Juros</th><th class="num">Multa</th><th class="num">Saldo depois</th></tr></thead><tbody>
+        ${r.amort.map(x => { const s = k => fmtNum(x.imputado.reduce((t, l) => t + l[k], 0)); return `<tr><td>${fmtData(x.data)}</td><td class="num">${fmtNum(x.valor)}</td><td>${esc(rotuloDestino(cob, x.a.destino))}${x.a.noPrazo ? ' · no prazo do art. 523' : ''}</td><td class="num">${fmtNum(x.antes)}</td><td class="num">${s('principal')}</td><td class="num">${s('juros')}</td><td class="num">${s('multa')}</td><td class="num">${fmtNum(x.depois)}</td></tr>`; }).join('')}</tbody></table>` : '');
   }
   $('#calcData').addEventListener('change', recalcular);
   desenharEncargos();
@@ -546,6 +621,9 @@ function telaCobranca(id, params) {
     cob.devedores = cob.devedores.filter(d => d.nome || d.documento);
     cob.cotas = cob.cotas.filter(c => Number(c.valor) > 0 || c.competencia);
     cob.despesas = cob.despesas.filter(d => Number(d.valor) > 0);
+    cob.pagamentos = cob.pagamentos.filter(a => Number(a.valor) > 0);
+    const pSemData = cob.pagamentos.filter(a => !ehData(a.data));
+    if (pSemData.length) throw new Error(`Há ${pSemData.length} pagamento(s) sem data.`);
     await salvarRegistro('cobrancas', cob);
     sujo = false;
     aviso('Cobrança salva.');

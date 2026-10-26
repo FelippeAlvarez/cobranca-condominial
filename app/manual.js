@@ -33,10 +33,27 @@ const MANUAL = [
     </ul>
     <p><b>Sugestões de descrição:</b> as opções que aparecem ao digitar a descrição de uma cota ou a rubrica de uma despesa podem ser alteradas pelo administrador pelo link "Editar as sugestões" nos quadros da cobrança ou em Configurações. A lista vale para toda a base.</p>`],
 
+  ['pagamentos', 'Pagamentos recebidos (amortizações)', `
+    <p>No quadro "Pagamentos recebidos" da cobrança, lance cada pagamento parcial do devedor: data, valor, imputação e de onde abater.</p>
+    <ul>
+      <li><b>Imputação</b>: "Juros primeiro" (art. 354 do CC: juros e multa vencidos, depois o principal) ou "Principal primeiro".</li>
+      <li><b>Abater de</b>: todas as cotas e despesas proporcionalmente, as mais antigas primeiro, despesas primeiro, só as cotas, só as despesas, ou uma cota ou despesa específica. Se o item escolhido ficar quitado, o que sobrar vai para os demais, dos mais antigos para os mais novos.</li>
+    </ul>
+    <p>O débito é atualizado até a data de cada pagamento e o valor é abatido; o saldo continua sendo corrigido e rendendo juros. A planilha traz um demonstrativo de cada pagamento (saldo antes, valores imputados e saldo depois).</p>`],
+
+  ['art523', 'Art. 523 do CPC (cumprimento de sentença)', `
+    <p>Na cobrança judicial, marque "Incluir multa e honorários do art. 523" quando o débito não tiver sido pago no prazo de 15 dias. A multa e os honorários (10% cada, ajustáveis) incidem sobre o <b>débito atualizado até a data do cálculo</b>.</p>
+    <ul>
+      <li>A base inclui as cotas atualizadas e, por padrão, os honorários contratuais. Marque também as despesas e os honorários sucumbenciais, se for o caso.</li>
+      <li>Para incluir só a multa (ou só os honorários), desmarque o outro.</li>
+      <li>Pagamento parcial feito <b>no prazo</b>: marque "No prazo do art. 523" no pagamento, para reduzir a base (§ 2º). Os demais pagamentos não reduzem a base.</li>
+    </ul>`],
+
   ['criterios', 'Como o programa calcula', `
     <ul>
-      <li><b>Correção</b>: IGP-M e IPCA acumulam as variações mensais do mês do vencimento até o mês anterior ao do cálculo; a UFIR-RJ usa a divisão entre os valores anuais (ano do cálculo ÷ ano do vencimento).</li>
-      <li><b>Juros de mora</b>: simples, pro rata die, sobre o valor corrigido (padrão de 1% ao mês, art. 1.336, § 1º, do Código Civil).</li>
+      <li><b>Correção</b>: IGP-M, IPCA, INPC e IPCA-E acumulam as variações mensais do mês do vencimento até o mês anterior ao do cálculo; a UFIR-RJ usa a divisão entre os valores anuais (ano do cálculo ÷ ano do vencimento).</li>
+      <li><b>Juros de mora</b>: simples, pro rata die, sobre o valor corrigido. Padrão de 1% ao mês (art. 1.336, § 1º, do Código Civil). Também é possível usar a <b>taxa legal</b> (art. 406 do CC), a <b>SELIC</b> (que já inclui a correção) ou nenhum juro. Taxa legal e SELIC: taxa do mês dividida pelos dias do mês, multiplicada pelos dias do período.</li>
+      <li><b>Lei 14.905/2024</b> (opcional, desmarcada por padrão): a partir de 30/08/2024, a correção passa a ser pelo IPCA e os juros pela taxa legal.</li>
       <li><b>Multa</b>: sobre o valor corrigido (padrão de 2%).</li>
       <li><b>Honorários contratuais</b>: sobre o débito atualizado (cotas corrigidas + juros + multa).</li>
     </ul>

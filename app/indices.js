@@ -1,8 +1,9 @@
 'use strict';
 /* Índices de correção monetária: IGP-M e IPCA (Banco Central, SGS) e UFIR-RJ (valor anual, SEFAZ-RJ) */
 
-const SERIES_BCB = { 'IGP-M': 189, 'IPCA': 433 };
-const INDICES = ['UFIR-RJ', 'IGP-M', 'IPCA', 'Nenhum'];
+const SERIES_BCB = { 'IGP-M': 189, 'IPCA': 433, 'INPC': 188, 'IPCA-E': 10764, 'SELIC': 4390, 'Taxa legal': 29543 };
+const DESDE_SERIE = { 'Taxa legal': 2024 };
+const INDICES = ['UFIR-RJ', 'IGP-M', 'IPCA', 'INPC', 'IPCA-E', 'Nenhum'];
 
 // Valores anuais da UFIR-RJ (fonte: SEFAZ-RJ). Novos anos podem ser incluídos em Configurações.
 const UFIR_RJ_PADRAO = {
@@ -50,19 +51,26 @@ const descFaltando = lista => lista.map(m => m.length === 4 ? m : mesNum(m)).joi
 async function buscarSerieBCB(codigo, desdeAno) {
   const ultimo = new Date().getFullYear(), blocos = [];
   for (let a = desdeAno; a <= ultimo; a += 10) blocos.push([a, Math.min(a + 9, ultimo)]);
-  const partes = await Promise.all(blocos.map(async ([de, ate]) => {
-    let r;
-    try { r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${codigo}/dados?formato=json&dataInicial=01/01/${de}&dataFinal=31/12/${ate}`); }
-    catch { throw new Error('Não foi possível acessar o Banco Central. Verifique a conexão com a internet.'); }
-    if (r.status === 404) return [];
-    if (!r.ok) throw new Error(`Banco Central: erro ${r.status}.`);
-    return r.json();
-  }));
+  // Um bloco de cada vez, com novas tentativas: o Banco Central recusa muitos pedidos simultâneos
+  const partes = [];
+  for (const [de, ate] of blocos) {
+    for (let tentativa = 1; ; tentativa++) {
+      let r = null;
+      try { r = await fetch(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${codigo}/dados?formato=json&dataInicial=01/01/${de}&dataFinal=31/12/${ate}`); }
+      catch { r = null; }
+      if (r?.status === 404) { partes.push([]); break; }
+      if (r?.ok) { partes.push(await r.json()); break; }
+      if (tentativa >= 3) throw new Error(r ? `Banco Central: erro ${r.status}.` : 'Não foi possível acessar o Banco Central. Verifique a conexão com a internet.');
+      await new Promise(ok => setTimeout(ok, 1500 * tentativa));
+    }
+  }
   const valores = {};
   for (const { data, valor } of partes.flat()) {
     const [, m, y] = data.split('/');
     valores[`${y}-${m}`] = Number(valor);
   }
+  // A SELIC do mês corrente vem acumulada só até hoje: fica de fora até o mês terminar
+  if (codigo === SERIES_BCB.SELIC) delete valores[mesAtual()];
   return valores;
 }
 
@@ -76,15 +84,21 @@ async function salvarIndices(mudar) {
 }
 
 async function atualizarIndicesBCB(nomes = Object.keys(SERIES_BCB)) {
-  const res = await Promise.all(nomes.map(async nome => {
-    const meses = Object.keys(D.indices?.series?.[nome] || {}).sort();
-    const desde = meses.length ? +meses[meses.length - 1].slice(0, 4) - 1 : 1995;
-    return [nome, await buscarSerieBCB(SERIES_BCB[nome], desde)];
+  // Duas séries por vez; as que falharem não impedem a gravação das demais
+  const res = [], erros = [], fila = [...nomes];
+  await Promise.all([0, 1].map(async () => {
+    while (fila.length) {
+      const nome = fila.shift();
+      const meses = Object.keys(D.indices?.series?.[nome] || {}).sort();
+      const desde = meses.length ? +meses[meses.length - 1].slice(0, 4) - 1 : (DESDE_SERIE[nome] || 1995);
+      try { res.push([nome, await buscarSerieBCB(SERIES_BCB[nome], desde)]); } catch (e) { erros.push([nome, e]); }
+    }
   }));
   const recebidos = res.filter(([, v]) => Object.keys(v).length);
-  if (!recebidos.length) throw new Error('O Banco Central não retornou dados.');
+  if (!recebidos.length) throw erros[0]?.[1] || new Error('O Banco Central não retornou dados.');
   await salvarIndices(a => { for (const [n, v] of recebidos) a.series[n] = { ...(a.series[n] || {}), ...v }; });
-  return Object.fromEntries(res.map(([n, v]) => [n, Object.keys(v).length]));
+  if (erros.length) console.warn('Índices não recebidos:', erros.map(([n]) => n).join(', '));
+  return Object.fromEntries([...res.map(([n, v]) => [n, Object.keys(v).length]), ...erros.map(([n]) => [n, 'falhou'])]);
 }
 
 // Atualiza em silêncio quando falta o mês anterior ao atual (no máximo a cada 6 horas neste computador)
@@ -111,18 +125,18 @@ function secaoIndicesHTML() {
   const t = tabelaUfir(), anos = Object.keys(t).sort().reverse();
   return `<section class="cartao" id="secIndices">
     <h2>Índices de correção monetária</h2>
-    <p class="dica">IGP-M e IPCA: variações mensais do Banco Central, atualizadas automaticamente. O fator acumula as variações do mês do vencimento até o mês anterior ao do cálculo.
+    <p class="dica">IGP-M, IPCA, INPC e IPCA-E: variações mensais do Banco Central, atualizadas automaticamente. O fator acumula as variações do mês do vencimento até o mês anterior ao do cálculo. SELIC e taxa legal (art. 406 do CC): taxas mensais de juros, também do Banco Central.
       UFIR-RJ: valor anual publicado pela SEFAZ-RJ. O fator é a UFIR-RJ do ano do cálculo dividida pela UFIR-RJ do ano do vencimento.</p>
     <div class="rolagem"><table class="tabela"><thead><tr><th>Índice</th><th>Período disponível</th><th class="num">Último mês</th><th></th></tr></thead><tbody>${linhas}
       <tr><td><b>UFIR-RJ</b></td><td>${anos[anos.length - 1]} a ${anos[0]}</td><td class="num">${String(t[anos[0]]).replace('.', ',')}</td><td></td></tr></tbody></table></div>
-    <div class="acoes-linha"><button class="bt" id="btIdxTodos">Atualizar IGP-M e IPCA pelo Banco Central</button></div>
+    <div class="acoes-linha"><button class="bt" id="btIdxTodos">Atualizar índices e taxas pelo Banco Central</button></div>
     <details class="detalhes"><summary>UFIR-RJ: valores por ano</summary>
       <p class="dica">Inclua o valor de cada novo ano quando a SEFAZ-RJ divulgar (normalmente em dezembro). Uma linha por ano, no formato <b>AAAA;valor</b> (ex.: <code>2027;5,1234</code>).</p>
       <div class="ufir-grade">${anos.map(a => `<span><b>${a}</b> ${String(t[a]).replace('.', ',')}</span>`).join('')}</div>
       <textarea id="ufirManual" rows="3" placeholder="2027;5,1234"></textarea>
       <div class="acoes-linha"><button class="bt" id="btUfir">Gravar valores da UFIR-RJ</button></div>
     </details>
-    <details class="detalhes"><summary>Informar IGP-M ou IPCA manualmente</summary>
+    <details class="detalhes"><summary>Informar um índice ou taxa manualmente</summary>
       <p class="dica">Uma linha por mês, no formato <b>MM/AAAA;variação %</b> (ex.: <code>09/2026;0,45</code>). Também é possível colar duas colunas copiadas de uma planilha.</p>
       <select id="idxManualNome" style="max-width:200px">${Object.keys(SERIES_BCB).map(n => `<option>${n}</option>`).join('')}</select>
       <textarea id="idxManual" rows="4" placeholder="09/2026;0,45"></textarea>

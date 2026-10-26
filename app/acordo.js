@@ -18,6 +18,8 @@ const COMPONENTES_ACORDO = [
   ['honContr', 'Honorários advocatícios contratuais'],
   ['despesas', 'Despesas'],
   ['suc', 'Honorários advocatícios sucumbenciais'],
+  ['a523m', 'Multa do art. 523 do CPC'],
+  ['a523h', 'Honorários do art. 523 do CPC'],
 ];
 const SITUACOES_ACORDO = { proposta: 'Proposta', aceito: 'Em andamento', quitado: 'Quitado', descumprido: 'Descumprido', descartado: 'Descartado' };
 const chipAcordo = s => `<span class="chip ${s === 'aceito' ? 'aberto' : s === 'quitado' ? 'fechado' : s === 'descumprido' ? 'pendente' : 'neutro'}">${SITUACOES_ACORDO[s] || s}</span>`;
@@ -28,7 +30,9 @@ function debitoAcordo(cobIds, data) {
   const itens = cobIds.map(id => D.cobrancas[id]).filter(Boolean).map(cob => ({ cob, r: calcularCobranca(cob, data) }));
   const comp = Object.fromEntries(COMPONENTES_ACORDO.map(([k]) => [k, 0]));
   const porCobranca = itens.map(({ cob, r }) => {
-    const c = { original: r.tc.original, correcao: r.tc.correcao, juros: r.tc.juros, multa: r.tc.multa, honContr: r.honContr, despesas: r.td.corrigido, suc: r.suc.valor };
+    // Com pagamentos, o principal em aberto (originário + correção) já vem descontado do que foi quitado
+    const c = { original: r.tc.originalRestante, correcao: r.tc.correcaoRestante, juros: r.tc.juros, multa: r.tc.multa, honContr: r.honContr, despesas: r.td.corrigido, suc: r.suc.valor,
+      a523m: r.art523?.multa || 0, a523h: r.art523?.hon || 0 };
     for (const k in c) comp[k] = r2(comp[k] + c[k]);
     return { id: cob.id, rotulo: `${nomeCond(cob)} - ${cob.unidade}`, total: r.total, comp: c, indice: r.p.indice, faltando: r.faltando };
   });
@@ -102,7 +106,7 @@ function calcularAcordo(a) {
   const totalParcelas = somar(plano.parcelas, x => x.valor), totalJuros = somar(plano.parcelas, x => x.juros);
   // Rateio: parte de honorários advocatícios (contratuais e sucumbenciais) no valor negociado, depois do desconto
   const descDe = k => a.desconto?.modo === 'itens' ? neg.descItens[k] || 0 : deb.total ? neg.desconto * (deb.comp[k] || 0) / deb.total : 0;
-  const honNeg = r2(['honContr', 'suc'].reduce((s, k) => s + (deb.comp[k] || 0) - descDe(k), 0));
+  const honNeg = r2(['honContr', 'suc', 'a523h'].reduce((s, k) => s + (deb.comp[k] || 0) - descDe(k), 0));
   const propHon = neg.negociado > 0 ? Math.max(0, Math.min(1, honNeg / neg.negociado)) : 0;
   return { deb, ...neg, plano, f1, totalParcelas, totalJuros, totalAcordo: r2(neg.sinal + totalParcelas), honNeg, propHon };
 }
