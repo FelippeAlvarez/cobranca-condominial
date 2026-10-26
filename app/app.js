@@ -1,10 +1,10 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.1.2';
+const VERSAO = '1.2.0';
 
 /* ================= Dados ================= */
-const D = { config: null, indices: null, condominios: {}, cobrancas: {}, carregadoEm: 0 };
+const D = { config: null, indices: null, condominios: {}, cobrancas: {}, acordos: {}, carregadoEm: 0 };
 
 const RUBRICAS_PADRAO = [
   'Custas iniciais', 'Taxa judiciária', 'Custas de distribuição', 'Diligência de oficial de justiça', 'Certidão de ônus reais (RGI)',
@@ -46,13 +46,14 @@ async function carregarColecao(col) {
 
 async function recarregarTudo() {
   Armaz.conflitos = [];
-  const [config, indices, condominios, cobrancas] = await Promise.all([
-    lerJSON('config.json', null), lerJSON('indices.json', { series: {} }), carregarColecao('condominios'), carregarColecao('cobrancas'),
+  const [config, indices, condominios, cobrancas, acordos] = await Promise.all([
+    lerJSON('config.json', null), lerJSON('indices.json', { series: {} }), carregarColecao('condominios'), carregarColecao('cobrancas'), carregarColecao('acordos'),
   ]);
   D.config = normalizarConfig(config);
   D.indices = indices;
   D.condominios = condominios;
   D.cobrancas = cobrancas;
+  D.acordos = acordos;
   D.carregadoEm = Date.now();
   atualizarDatalists();
 }
@@ -128,6 +129,7 @@ async function rotear() {
     cobranca: () => telaCobranca(arg?.split('?')[0], params), devedores: telaDevedores, imoveis: telaImoveis,
     relatorios: () => telaRelatorios(params), config: () => Auth.ehAdmin() ? telaConfig() : telaConta(), conta: telaConta,
     usuarios: () => Auth.ehAdmin() ? telaUsuarios() : telaConta(),
+    acordos: telaAcordos, acordo: () => telaAcordo(arg?.split('?')[0], params),
   }[rota] || telaInicio;
   await executar(tela);
 }
@@ -136,7 +138,7 @@ const cabecalho = (titulo, sub = '', acoes = '', voltar = '') => `<div class="ca
 const optCondominios = sel => Object.values(D.condominios).sort((a, b) => comparar(a.razao, b.razao))
   .map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.razao)}</option>`).join('');
 const chipTipo = cob => cob.tipo === 'judicial' ? '<span class="chip pendente">Judicial</span>' : '<span class="chip aberto">Extrajudicial</span>';
-const chipSit = cob => (cob.situacao || 'ativa') === 'ativa' ? '' : ' <span class="chip neutro">Encerrada</span>';
+const chipSit = cob => ((cob.situacao || 'ativa') === 'ativa' ? '' : ' <span class="chip neutro">Encerrada</span>') + (Object.values(D.acordos || {}).some(a => a.situacao === 'aceito' && (a.cobrancas || []).includes(cob.id)) ? ' <span class="chip aberto">Em acordo</span>' : '');
 
 /* ================= Início ================= */
 async function telaInicio() {
@@ -351,7 +353,8 @@ function telaCobranca(id, params) {
   <div class="cartao destaque"><div class="cartao-cab"><h2>Cálculo</h2><label class="inline">Atualizar até <input type="date" id="calcData" value="${st.data}"></label></div>
     <div class="colunas2"><div id="calcResumo" class="resumo"></div><div><p id="calcCrit" class="dica"></p><div id="calcAvisos"></div></div></div>
     <details class="detalhes"><summary>Ver o cálculo de cada cota</summary><div id="calcDet" class="rolagem"></div></details>
-    <div class="acoes-linha"><button class="bt" id="expVer">Visualizar PDF</button><button class="bt" id="expPdf">Salvar PDF</button><button class="bt" id="expXlsx">Salvar Excel</button></div>
+    <div class="acoes-linha"><button class="bt" id="expVer">Visualizar PDF</button><button class="bt" id="expPdf">Salvar PDF</button><button class="bt" id="expXlsx">Salvar Excel</button>${nova ? '' : `<a class="bt primario" href="#/acordo/novo?cob=${cob.id}">Negociar acordo</a>`}</div>
+    ${nova ? '' : acordosDaCobranca(cob.id).map(x => `<p class="dica" style="margin-top:8px">Acordo de ${fmtData(x.data)}: ${chipAcordo(x.situacao)} <a href="#/acordo/${x.id}">abrir</a></p>`).join('')}
   </div>
 
   <div class="barra-salvar"><span id="estadoSalvar"></span>${nova ? '' : (Auth.ehAdmin() ? '<button class="bt perigo" id="btExcluir">Excluir</button>' : '') + '<button class="bt" id="btDuplicar">Duplicar</button>'}<button class="bt primario" id="btSalvar">Salvar</button></div>`;

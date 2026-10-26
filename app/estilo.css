@@ -405,3 +405,12 @@ a.link-cartao h2 { color: var(--pri); }
 .bt-instalar-topo { margin-left: auto; white-space: nowrap; }
 .bt-instalar-topo:not([hidden]) + .topo-dir { margin-left: 12px; }
 @media (max-width: 420px) { .bt-instalar-topo { font-size: 11px; padding: 2px 6px; } }
+
+/* ---------- Acordos ---------- */
+.linha-cob { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--borda-suave); cursor: pointer; }
+.linha-cob .num { font-variant-numeric: tabular-nums; }
+.linha-desc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.linha-desc input { max-width: 160px; }
+.sel-tipo { width: auto; min-width: 62px; }
+.campo-bt .sel-tipo { flex: 0 0 auto; }
+.tabela-parcelas { max-height: 420px; overflow: auto; }

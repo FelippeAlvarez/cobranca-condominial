@@ -116,6 +116,32 @@ No programa, as cotas de uma cobrança (inclusive importada) podem ser acrescent
 qualquer momento: "+ Adicionar cota" ou "Lançar meses em sequência".
 
 
+5-A. ACORDOS (NEGOCIAÇÃO E ACOMPANHAMENTO)
+------------------------------------------
+Menu "Acordos" > "Novo acordo", ou o botão "Negociar acordo" na tela da cobrança.
+1. Escolha o devedor e marque as cobranças incluídas (pode juntar várias do mesmo devedor).
+   O débito é atualizado até a data do acordo.
+2. Desconto em % ou R$: sobre o total, ou item a item (cotas, correção, juros, multa,
+   honorários contratuais, despesas, honorários sucumbenciais).
+3. Entrada (sinal) em % ou R$, com a data de pagamento.
+4. Parcelamento pela Tabela Price: informe o prazo (calcula a parcela) ou a parcela
+   (calcula o prazo; a última fica menor), a taxa de juros, o vencimento da 1ª parcela
+   (qualquer data) e se incidem juros até ela. Escolha o índice de correção das parcelas.
+5. Atraso e descumprimento: multa e juros das parcelas em atraso; no descumprimento,
+   vencimento antecipado do saldo ou perda do desconto, com ou sem multa.
+6. "Salvar proposta" guarda para negociar depois; "Acordo aceito" fixa os valores.
+   PDF (proposta/termo, com a planilha de débito de cada cobrança) e Excel com fórmulas.
+
+Acompanhamento (acordo aceito):
+- Registrar pagamento: o programa sugere o valor devido na data (corrigido desde o acordo
+  e, se em atraso, com juros e multa). Valor menor fica como pagamento parcial.
+- Amortização antecipada: reduz o prazo ou o valor das parcelas restantes.
+- Quitar o acordo: calcula o valor para quitação na data (sem os juros futuros).
+- Informar descumprimento: calcula o valor devido conforme a cláusula escolhida.
+- Desfazer o último lançamento, extrato em PDF ou Excel e termo do acordo.
+- Acordo quitado: botão para encerrar as cobranças incluídas.
+
+
 6. IMPORTAR PLANILHAS EXISTENTES (EXCEL, CSV OU PDF)
 ---------------------------------------------------
 Aceita .xlsx, .csv e PDF. Planilhas antigas (.xls) precisam ser salvas antes como .xlsx.
