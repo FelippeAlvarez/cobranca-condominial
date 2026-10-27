@@ -31,6 +31,12 @@ const ART523_PADRAO = { aplicar: false, multa: 10, honorarios: 10, incluirMulta:
 const vazio = x => x === null || x === undefined || x === '';
 const simNao = v => v === true || v === 'sim';
 
+// Honorários contratuais: em linha separada (false), embutidos sem menção (true) ou em coluna após a cota ('coluna').
+// Nos dois últimos a correção, os juros e a multa incidem sobre a cota + honorários (embutir = true).
+const MODOS_HON = { nao: 'Em linha separada, sobre o débito atualizado', sim: 'Embutidos no valor originário das cotas, sem menção', coluna: 'Em coluna após o valor da cota, compondo a base dos encargos' };
+const modoHonDe = v => v === 'coluna' ? 'coluna' : simNao(v) ? 'sim' : 'nao';
+const modoHon = v => ({ embutir: modoHonDe(v) !== 'nao', honColuna: modoHonDe(v) === 'coluna' });
+
 // Parâmetros efetivos: Configurações → condomínio → cobrança (campos em branco herdam)
 function paramsCobranca(cob) {
   const cfg = { ...PADROES, ...(D.config?.padroes || {}) };
@@ -42,7 +48,7 @@ function paramsCobranca(cob) {
   };
   return {
     indice: pegar('indice'), multa: pegar('multa', true), juros: pegar('juros', true), tipoJuros: pegar('tipoJuros') || 'mensal',
-    lei14905: simNao(pegar('lei14905')), honContr: pegar('honContr', true), embutir: simNao(pegar('embutir')), ignorarNegativos: !!cfg.ignorarNegativos,
+    lei14905: simNao(pegar('lei14905')), honContr: pegar('honContr', true), ...modoHon(pegar('embutir')), ignorarNegativos: !!cfg.ignorarNegativos,
   };
 }
 
@@ -209,7 +215,7 @@ function calcularCobranca(cob, dataCalc, pIn) {
   const aVencer = todas.filter(c => c.vencimento >= dataCalc);
   const parcCotas = todas.filter(c => c.vencimento < dataCalc).map(c => novaParcela({
     id: c.id, grupo: 'cota', c, rotulo: `${mesNum(c.competencia)} ${c.descricao || 'Cota condominial'}`.trim(), data: c.vencimento,
-    P0: r2(Number(c.valor) * fatorEmbutir), corrDesde: c.vencimento, jurosDesde: c.vencimento, regimes: regsCota, multaPct: p.multa,
+    P0: p.honColuna ? r2(Number(c.valor) + r2(Number(c.valor) * p.honContr / 100)) : r2(Number(c.valor) * fatorEmbutir), corrDesde: c.vencimento, jurosDesde: c.vencimento, regimes: regsCota, multaPct: p.multa,
   }));
   const parcDesp = (cob.despesas || []).filter(d => Number(d.valor) > 0 && d.data && d.data <= dataCalc)
     .sort((a, b) => comparar(a.data, b.data)).map(d => novaParcela({
@@ -268,11 +274,12 @@ function calcularCobranca(cob, dataCalc, pIn) {
     e.taxa = u.jurosDesde ? taxaJuros(u, u.jurosDesde, dataCalc, new Set(), new Set()) : 0;
     return e;
   };
-  const cotas = parcCotas.map(u => ({ c: u.c, valor: u.P0, e: linha(u) }));
+  // cota e hon: valor da cota e honorários contratuais (modo 'coluna'); valor: base dos encargos
+  const cotas = parcCotas.map(u => ({ c: u.c, valor: u.P0, cota: Number(u.c.valor), hon: r2(u.P0 - Number(u.c.valor)), e: linha(u) }));
   const tc = {
     original: somar(cotas, x => x.valor), corrigido: somar(cotas, x => x.e.corrigido), correcao: somar(cotas, x => x.e.correcao),
     juros: somar(cotas, x => x.e.juros), multa: somar(cotas, x => x.e.multa), pago: somar(cotas, x => x.e.pago), total: somar(cotas, x => x.e.total),
-    principal: somar(cotas, x => x.e.principal),
+    principal: somar(cotas, x => x.e.principal), cota: somar(cotas, x => x.cota), hon: somar(cotas, x => x.hon),
   };
   // Parte do principal (corrigido) quitada pelos pagamentos; juros e multa pagos já saem dos próprios saldos
   tc.amortizado = r2(tc.corrigido - tc.principal);
@@ -340,6 +347,7 @@ function descCriterios(r) {
   partes.push(descJuros(p) + '.');
   if (p.lei14905) partes.push(`A partir de ${fmtData(DATA_LEI_14905)} (Lei 14.905/2024): correção pelo IPCA e juros pela taxa legal.`);
   partes.push(`Multa: ${fmtPct(p.multa)}% sobre o valor corrigido.`);
+  if (p.honColuna && p.honContr) partes.push(`Honorários advocatícios contratuais: ${fmtPct(p.honContr)}% sobre o valor de cada cota, compondo a base de cálculo da correção monetária, dos juros e da multa.`);
   if (!p.embutir && p.honContr) partes.push(`Honorários advocatícios contratuais: ${fmtPct(p.honContr)}% sobre o débito atualizado.`);
   if (r.despesas.length) partes.push('Despesas corrigidas desde a data de cada pagamento' + (r.despesas.some(x => x.d.corrigir === false) ? ', quando indicado' : '') + '.');
   if (r.amort.length) partes.push(`Pagamentos abatidos na data de cada um, imputados ${r.amort.every(x => x.a.imputacao === 'principal') ? 'primeiro no principal' : 'primeiro nos juros e na multa (art. 354 do CC), quando assim indicado'}.`);

@@ -4,7 +4,7 @@ Programa para gerar e atualizar planilhas de cobrança judicial e extrajudicial 
 
 - Cadastro de condomínios (credores), unidades e devedores
 - Cotas mês a mês com correção monetária (UFIR-RJ, IGP-M ou IPCA), juros de mora pro rata die e multa
-- Honorários contratuais (em linha própria ou embutidos no valor das cotas) e sucumbenciais
+- Honorários contratuais (em linha própria, embutidos no valor das cotas ou em coluna após a cota) e sucumbenciais
 - Despesas (custas, certidões, registros) com correção desde o pagamento
 - Planilhas em PDF e Excel (com fórmulas) por cobrança, devedor, imóvel e cliente
 - Importação de planilhas Excel, CSV e PDF

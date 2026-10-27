@@ -74,6 +74,8 @@ Como os dados ficam gravados:
 - Encargos e honorários contratuais: em branco, valem os do condomínio.
   "Embutidos no valor originário das cotas": o valor de cada cota já sai acrescido do
   percentual dos honorários contratuais, sem linha própria e sem menção na planilha.
+  "Em coluna após o valor da cota": os honorários aparecem numa coluna logo depois do
+  valor de cada cota, e a correção, os juros e a multa incidem sobre a cota + honorários.
 - Honorários sucumbenciais: percentual (sobre o débito, com ou sem as despesas) ou
   valor fixo, que pode ser corrigido desde a data da fixação.
 - Cálculo: escolha a data e confira o resumo. Gere a planilha em PDF ou Excel.
@@ -111,7 +113,9 @@ No Excel, cada cobrança fica numa aba, com fórmulas em tudo:
 - se precisar de mais linhas, insira-as antes da última linha em branco e copie as
   fórmulas da linha de cima;
 - quando os honorários contratuais estiverem embutidos nas cotas, digite o valor da cota
-  já acrescido do percentual (ou inclua o mês pelo programa, que faz isso sozinho).
+  já acrescido do percentual (ou inclua o mês pelo programa, que faz isso sozinho);
+  com os honorários em coluna, digite só o valor da cota: a coluna dos honorários é
+  calculada pela fórmula.
 No programa, as cotas de uma cobrança (inclusive importada) podem ser acrescentadas a
 qualquer momento: "+ Adicionar cota" ou "Lançar meses em sequência".
 

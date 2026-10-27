@@ -28,7 +28,7 @@ const MANUAL = [
       <li><b>Dados</b>: condomínio, unidade, tipo (judicial ou extrajudicial, com processo e juízo) e devedores (pode haver mais de um).</li>
       <li><b>Cotas em aberto</b>: competência, descrição, vencimento e valor originário. "Lançar meses em sequência" preenche vários meses de uma vez. Marque "Paga" para tirar a cota do cálculo sem apagá-la.</li>
       <li><b>Despesas pagas</b>: data, rubrica, descrição, valor e, se quiser, o <b>Id. no processo</b> (onde está o comprovante nos autos), que sai na planilha. Marque "Corrigir" para atualizar desde a data do pagamento.</li>
-      <li><b>Encargos e honorários contratuais</b>: em branco, valem os do condomínio. Os honorários contratuais podem sair em linha própria ou <b>embutidos no valor originário</b> das cotas, sem menção na planilha.</li>
+      <li><b>Encargos e honorários contratuais</b>: em branco, valem os do condomínio. Os honorários contratuais podem sair em linha própria, <b>embutidos no valor originário</b> das cotas (sem menção na planilha) ou <b>em coluna logo após o valor da cota</b>; nos dois últimos casos, a correção, os juros e a multa incidem sobre a cota + honorários.</li>
       <li><b>Honorários sucumbenciais</b>: percentual (com ou sem as despesas na base) ou valor fixo, corrigido desde a fixação.</li>
     </ul>
     <p><b>Sugestões de descrição:</b> as opções que aparecem ao digitar a descrição de uma cota ou a rubrica de uma despesa podem ser alteradas pelo administrador pelo link "Editar as sugestões" nos quadros da cobrança ou em Configurações. A lista vale para toda a base.</p>`],
@@ -93,7 +93,7 @@ const MANUAL = [
   ['duvidas', 'Dúvidas comuns', `
     <ul>
       <li><b>Programa desatualizado</b>: recarregue a página com Ctrl+F5.</li>
-      <li><b>Valor diferente de outra planilha</b>: confira o índice, os juros, a multa, os honorários contratuais (em linha própria ou embutidos) e a data do cálculo.</li>
+      <li><b>Valor diferente de outra planilha</b>: confira o índice, os juros, a multa, os honorários contratuais (em linha própria, embutidos ou em coluna) e a data do cálculo.</li>
       <li><b>UFIR-RJ de um ano novo</b>: inclua o valor em Configurações &gt; Índices quando a SEFAZ-RJ divulgar (normalmente em dezembro).</li>
     </ul>`],
 ];

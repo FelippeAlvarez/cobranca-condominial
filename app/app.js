@@ -1,7 +1,7 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.4.0';
+const VERSAO = '1.4.1';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, acordos: {}, carregadoEm: 0 };
@@ -222,7 +222,10 @@ function camposEncargosHTML(valores, herdado, rotuloHerda) {
   const v = k => vazio(valores?.[k]) ? '' : valores[k];
   const ph = k => herdado ? `placeholder="${esc(fmtPct(herdado[k]))} (${rotuloHerda})"` : '';
   const sn = k => vazio(valores?.[k]) ? '' : (valores[k] === true || valores[k] === 'sim') ? 'sim' : 'nao';
-  const emb = sn('embutir'), lei = sn('lei14905'), tj = v('tipoJuros');
+  // Modo dos honorários: o igual ao herdado aparece só como "(padrão)", sem opção repetida
+  const hh = herdado ? modoHonDe(herdado.honColuna ? 'coluna' : herdado.embutir) : '';
+  const emb = vazio(valores?.embutir) || modoHonDe(valores.embutir) === hh ? '' : modoHonDe(valores.embutir);
+  const lei = sn('lei14905'), tj = v('tipoJuros');
   return `<div class="grade-form">
     <div class="campo"><label>Índice de correção</label><select data-p="indice">${herdado ? `<option value="">${esc(herdado.indice)} (${rotuloHerda})</option>` : ''}${INDICES.map(i => `<option ${v('indice') === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
     <div class="campo"><label>Juros de mora</label><select data-p="tipoJuros">${herdado ? `<option value="">${esc(TIPOS_JUROS[herdado.tipoJuros] || TIPOS_JUROS.mensal)} (${rotuloHerda})</option>` : ''}
@@ -235,9 +238,9 @@ function camposEncargosHTML(valores, herdado, rotuloHerda) {
       <small>Se aplicada, a partir de 30/08/2024 a correção passa a ser pelo IPCA e os juros pela taxa legal (art. 406 do CC).</small></div>
     <div class="campo"><label>Honorários contratuais (%)</label><input data-p="honContr" inputmode="decimal" value="${esc(v('honContr') === '' ? '' : fmtPct(v('honContr')))}" ${ph('honContr')}></div>
     <div class="campo w2"><label>Honorários contratuais na planilha</label><select data-p="embutir">
-      ${herdado ? `<option value="">${herdado.embutir ? 'Embutidos no valor das cotas' : 'Em linha separada'} (${rotuloHerda})</option>` : ''}
-      <option value="nao" ${emb === 'nao' ? 'selected' : ''}>Em linha separada</option><option value="sim" ${emb === 'sim' ? 'selected' : ''}>Embutidos no valor originário das cotas</option></select>
-      <small>Embutidos: o valor originário de cada cota já inclui o percentual dos honorários contratuais, sem menção na planilha.</small></div>
+      ${herdado ? `<option value="">${MODOS_HON[hh]} (${rotuloHerda})</option>` : ''}
+      ${Object.entries(MODOS_HON).filter(([k]) => !herdado || k !== hh).map(([k, t]) => `<option value="${k}" ${emb === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <small>Embutidos: o valor originário de cada cota já inclui o percentual, sem menção. Em coluna: os honorários aparecem logo após o valor da cota e a correção, os juros e a multa incidem sobre a soma.</small></div>
   </div>`;
 }
 
@@ -246,7 +249,8 @@ function lerEncargos(raiz, permiteVazio) {
   $$('[data-p]', raiz).forEach(el => {
     const k = el.dataset.p, val = el.value.trim();
     if (k === 'indice' || k === 'tipoJuros') p[k] = val;
-    else if (k === 'embutir' || k === 'lei14905') p[k] = val === '' ? '' : val === 'sim';
+    else if (k === 'embutir') p[k] = val === '' ? '' : val === 'coluna' ? 'coluna' : val === 'sim';
+    else if (k === 'lei14905') p[k] = val === '' ? '' : val === 'sim';
     else p[k] = val === '' ? '' : parseValor(val);
   });
   if (!permiteVazio) { for (const k of ['multa', 'juros', 'honContr']) if (p[k] === '') p[k] = 0; if (!p.tipoJuros) p.tipoJuros = 'mensal'; }
@@ -582,11 +586,11 @@ function telaCobranca(id, params) {
     $('#calcResumo').innerHTML = itensResumo(r).map(([rot, v, e]) => `<div class="res-l ${e === 'f' ? 'final' : e === 'b' ? 'dest' : ''}"><span>${esc(rot)}</span><b>${fmtMoeda(v)}</b></div>`).join('');
     $('#calcCrit').textContent = descCriterios(r);
     $('#calcAvisos').innerHTML = notasCalculo(r).slice(1).map(n => `<p class="alerta">${esc(n)}</p>`).join('')
-      + (r.p.embutir ? `<p class="dica">Honorários contratuais de ${fmtPct(r.p.honContr)}% embutidos no valor originário das cotas.</p>` : '');
-    const pg = r.amort.length > 0;
-    $('#calcDet').innerHTML = (r.cotas.length ? `<table class="tabela"><thead><tr><th>Competência</th><th>Vencimento</th><th class="num">Valor originário</th><th class="num">Fator</th><th class="num">Corrigido</th><th class="num">Dias</th><th class="num">Juros${pg ? ' (em aberto)' : ''}</th><th class="num">Multa${pg ? ' (em aberto)' : ''}</th>${pg ? '<th class="num">Principal quitado</th>' : ''}<th class="num">Total</th></tr></thead><tbody>
-      ${r.cotas.map(x => `<tr><td>${mesNum(x.c.competencia)} ${esc(x.c.descricao && x.c.descricao !== 'Cota condominial' ? '· ' + x.c.descricao : '')}</td><td>${fmtData(x.c.vencimento)}</td><td class="num">${fmtNum(x.valor)}</td><td class="num">${fmtFator(x.e.fator)}</td><td class="num">${fmtNum(x.e.corrigido)}</td><td class="num">${x.e.dias}</td><td class="num">${fmtNum(x.e.juros)}</td><td class="num">${fmtNum(x.e.multa)}</td>${pg ? `<td class="num">${fmtNum(r2(x.e.corrigido - x.e.principal))}</td>` : ''}<td class="num">${fmtNum(x.e.total)}</td></tr>`).join('')}
-      <tr class="subtotal"><td>Totais</td><td></td><td class="num">${fmtNum(r.tc.original)}</td><td></td><td class="num">${fmtNum(r.tc.corrigido)}</td><td></td><td class="num">${fmtNum(r.tc.juros)}</td><td class="num">${fmtNum(r.tc.multa)}</td>${pg ? `<td class="num">${fmtNum(r.tc.amortizado)}</td>` : ''}<td class="num">${fmtNum(r.tc.total)}</td></tr></tbody></table>` : '<p class="vazio">Nenhuma cota vencida em aberto até a data.</p>')
+      + (r.p.embutir && !r.p.honColuna ? `<p class="dica">Honorários contratuais de ${fmtPct(r.p.honContr)}% embutidos no valor originário das cotas.</p>` : '');
+    const pg = r.amort.length > 0, hc = r.p.honColuna;
+    $('#calcDet').innerHTML = (r.cotas.length ? `<table class="tabela"><thead><tr><th>Competência</th><th>Vencimento</th>${hc ? `<th class="num">Valor da cota</th><th class="num">Honorários contratuais (${fmtPct(r.p.honContr)}%)</th>` : '<th class="num">Valor originário</th>'}<th class="num">Fator</th><th class="num">Corrigido</th><th class="num">Dias</th><th class="num">Juros${pg ? ' (em aberto)' : ''}</th><th class="num">Multa${pg ? ' (em aberto)' : ''}</th>${pg ? '<th class="num">Principal quitado</th>' : ''}<th class="num">Total</th></tr></thead><tbody>
+      ${r.cotas.map(x => `<tr><td>${mesNum(x.c.competencia)} ${esc(x.c.descricao && x.c.descricao !== 'Cota condominial' ? '· ' + x.c.descricao : '')}</td><td>${fmtData(x.c.vencimento)}</td>${hc ? `<td class="num">${fmtNum(x.cota)}</td><td class="num">${fmtNum(x.hon)}</td>` : `<td class="num">${fmtNum(x.valor)}</td>`}<td class="num">${fmtFator(x.e.fator)}</td><td class="num">${fmtNum(x.e.corrigido)}</td><td class="num">${x.e.dias}</td><td class="num">${fmtNum(x.e.juros)}</td><td class="num">${fmtNum(x.e.multa)}</td>${pg ? `<td class="num">${fmtNum(r2(x.e.corrigido - x.e.principal))}</td>` : ''}<td class="num">${fmtNum(x.e.total)}</td></tr>`).join('')}
+      <tr class="subtotal"><td>Totais</td><td></td>${hc ? `<td class="num">${fmtNum(r.tc.cota)}</td><td class="num">${fmtNum(r.tc.hon)}</td>` : `<td class="num">${fmtNum(r.tc.original)}</td>`}<td></td><td class="num">${fmtNum(r.tc.corrigido)}</td><td></td><td class="num">${fmtNum(r.tc.juros)}</td><td class="num">${fmtNum(r.tc.multa)}</td>${pg ? `<td class="num">${fmtNum(r.tc.amortizado)}</td>` : ''}<td class="num">${fmtNum(r.tc.total)}</td></tr></tbody></table>` : '<p class="vazio">Nenhuma cota vencida em aberto até a data.</p>')
       + (pg ? `<h3 style="font-size:13px;margin:14px 0 6px">Pagamentos</h3><table class="tabela"><thead><tr><th>Data</th><th class="num">Valor pago</th><th>Abatido de</th><th class="num">Saldo antes</th><th class="num">Principal</th><th class="num">Juros</th><th class="num">Multa</th><th class="num">Saldo depois</th></tr></thead><tbody>
         ${r.amort.map(x => { const s = k => fmtNum(x.imputado.reduce((t, l) => t + l[k], 0)); return `<tr><td>${fmtData(x.data)}</td><td class="num">${fmtNum(x.valor)}</td><td>${esc(rotuloDestino(cob, x.a.destino))}${x.a.noPrazo ? ' · no prazo do art. 523' : ''}</td><td class="num">${fmtNum(x.antes)}</td><td class="num">${s('principal')}</td><td class="num">${s('juros')}</td><td class="num">${s('multa')}</td><td class="num">${fmtNum(x.depois)}</td></tr>`; }).join('')}</tbody></table>` : '');
   }
