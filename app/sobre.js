@@ -20,7 +20,8 @@ function textoSobre(secao) {
       <p>O titular concede às pessoas por ele autorizadas uma licença de uso não exclusiva, intransferível e revogável, para uso do programa em suas atividades profissionais, nos termos de uso abaixo.
         Não é permitido, sem autorização prévia e por escrito do titular: copiar, modificar, adaptar, traduzir, distribuir, sublicenciar, vender, alugar ou disponibilizar o programa a terceiros, nem remover os avisos de direitos autorais.
         As bibliotecas de terceiros incluídas no programa continuam sujeitas às próprias licenças (ver "Licenças de terceiros").</p>
-      <p>As planilhas e os PDFs que você gera com o programa, com os seus dados, podem ser usados livremente por você, inclusive em processos judiciais e cobranças.</p>`,
+      <p>As planilhas e os PDFs que você gera com o programa, com os seus dados, podem ser usados livremente por você, inclusive em processos judiciais e cobranças.</p>
+      <p class="dica"><button type="button" id="btCompartilharApp" class="link-discreto">Compartilhar o endereço deste programa</button></p>`,
 
     termos: `<h2>Termos de uso</h2>
       <p class="dica">Vigentes desde ${VIGENCIA_TERMOS}. Ao usar o programa, você concorda com estes termos.</p>
@@ -96,6 +97,22 @@ function telaSobre(secao) {
     <div class="abas">${SECOES_SOBRE.map(([k, t]) => `<a href="#/sobre/${k}" class="${k === secao ? 'ativa' : ''}">${t}</a>`).join('')}</div>
     <div class="cartao texto-legal">${textoSobre(secao)}</div>
     <p class="dica">${esc(COPYRIGHT)}</p>`;
+  const bc = document.getElementById('btCompartilharApp');
+  if (bc) bc.addEventListener('click', compartilharApp);
+}
+
+// Compartilhar o endereço do programa (menu de compartilhar do aparelho ou, se não houver, copia o link)
+async function compartilharApp() {
+  const dados = { title: 'Cobrança Condominial', text: 'Cobrança Condominial: planilhas de cobrança judicial e extrajudicial de cotas condominiais em atraso.', url: 'https://felippealvarez.github.io/cobranca-condominial/' };
+  try {
+    if (navigator.share) { await navigator.share(dados); return; }
+  } catch (err) { if (err && err.name === 'AbortError') return; }
+  try {
+    await navigator.clipboard.writeText(dados.url);
+    alert('Link copiado:\n' + dados.url + '\n\nCole numa conversa para compartilhar.');
+  } catch (err) {
+    prompt('Copie o endereço do programa:', dados.url);
+  }
 }
 
 // Rodapé com os links legais (tela de conexão e menu)
