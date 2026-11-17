@@ -79,6 +79,7 @@ function textoSobre(secao) {
       <ul>
         <li><b>jsPDF</b> 2.5.1, para gerar os PDFs. © 2010-2021 James Hall e © 2015-2021 yWorks GmbH. Licença MIT: <a href="licencas/jspdf-mit.txt" target="_blank" rel="noopener">texto da licença</a>.</li>
         <li><b>PDF.js</b> 3.11.174, para a prévia dos PDFs. © Mozilla Foundation. Licença Apache 2.0: <a href="licencas/apache-2.0.txt" target="_blank" rel="noopener">texto da licença</a>.</li>
+        <li><b>Inter</b> (fonte do programa). © 2016 The Inter Project Authors. SIL Open Font License 1.1: <a href="licencas/inter-ofl.txt" target="_blank" rel="noopener">texto da licença</a>.</li>
       </ul>
       <h3>Dados públicos</h3>
       <ul>

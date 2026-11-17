@@ -3,11 +3,11 @@
   Busca primeiro na rede (para receber as atualizações na hora) e usa a cópia guardada se a rede falhar.
   Só guarda os arquivos do próprio app; os dados ficam na pasta escolhida e os índices vêm do Banco Central.
 */
-const CACHE = 'cobranca-condominial-v9';
+const CACHE = 'cobranca-condominial-v10';
 const ARQUIVOS = [
   './', './index.html', './estilo.css', './icone.svg', './manifest.webmanifest',
   './util.js', './armazenamento.js', './auth.js', './indices.js', './calculo.js', './xlsx.js', './pdf.js', './relatorios.js', './importar.js', './acordo.js', './sobre.js', './manual.js', './app.js',
-  './lib/jspdf.umd.min.js', './icones/icone-192.png', './icones/icone-512.png', './icones/apple-touch-icon.png',
+  './lib/jspdf.umd.min.js', './lib/fontes/inter-latin.woff2', './lib/fontes/inter-latin-ext.woff2', './icones/icone-192.png', './icones/icone-512.png', './icones/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', e => {

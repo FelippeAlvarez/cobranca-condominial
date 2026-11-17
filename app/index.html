@@ -13,33 +13,46 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Cobrança">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preload" href="lib/fontes/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="estilo.css">
 </head>
 <body>
+<script>document.documentElement.dataset.tema = localStorage.getItem('cc-tema') || '';</script>
 <header class="topo">
-  <button id="btMenu" class="bt-menu" aria-label="Abrir menu">&#9776;</button>
+  <button id="btMenu" class="bt-menu" aria-label="Abrir menu"><svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
   <a class="marca" href="#/inicio"><img src="icone.svg" alt=""><span>Cobrança Condominial</span></a>
-  <div class="acoes-topo"><button type="button" id="btInstalarTopo" class="bt-manual" title="Instalar o aplicativo neste aparelho" hidden>Instalar app</button><a class="bt-manual" href="#/manual" title="Manual de uso">Manual</a></div>
+  <div class="acoes-topo"><button type="button" id="btInstalarTopo" class="bt-manual" title="Instalar o aplicativo neste aparelho" hidden>Instalar app</button><a class="bt-manual" href="#/manual" title="Manual de uso">Manual</a><button type="button" class="bt-icone bt-tema" title="Tema escuro"></button></div>
   <div class="topo-dir"><div id="usuarioTopo" class="usuario-topo"></div><div id="statusArmaz" class="status-armaz"></div></div>
 </header>
 <nav id="menu" class="menu">
-  <a href="#/inicio" data-rota="inicio">Cobranças</a>
-  <a href="#/cobranca/nova" data-rota="cobranca">Nova cobrança</a>
-  <a href="#/condominios" data-rota="condomini">Condomínios (clientes)</a>
-  <a href="#/devedores" data-rota="devedores">Devedores</a>
-  <a href="#/imoveis" data-rota="imoveis">Imóveis</a>
-  <a href="#/relatorios" data-rota="relatorios">Planilhas</a>
-  <a href="#/acordos" data-rota="acord">Acordos</a>
-  <a href="#/usuarios" data-rota="usuarios" class="so-admin">Usuários</a>
-  <a href="#/config" data-rota="config" class="so-admin">Configurações</a>
-  <a href="#/conta" data-rota="conta">Minha conta</a>
-  <a href="#/manual" data-rota="manual">Manual de uso</a>
-  <a href="#/sobre" data-rota="sobre">Sobre, termos e privacidade</a>
+  <a class="menu-marca" href="#/inicio"><span class="menu-logo"><img src="icone.svg" alt=""></span><span><b>Cobrança Condominial</b><small>Cotas em atraso</small></span></a>
+  <div class="menu-grupo">Operação</div>
+  <a href="#/inicio" data-rota="inicio" data-ic="inicio">Cobranças</a>
+  <a href="#/cobranca/nova" data-rota="cobranca" data-ic="mais">Nova cobrança</a>
+  <a href="#/acordos" data-rota="acord" data-ic="acordo">Acordos</a>
+  <a href="#/relatorios" data-rota="relatorios" data-ic="tabela">Planilhas</a>
+  <div class="menu-grupo">Cadastros</div>
+  <a href="#/condominios" data-rota="condomini" data-ic="predio">Condomínios (clientes)</a>
+  <a href="#/devedores" data-rota="devedores" data-ic="pessoas">Devedores</a>
+  <a href="#/imoveis" data-rota="imoveis" data-ic="porta">Imóveis</a>
+  <div class="menu-grupo">Conta e ajuda</div>
+  <a href="#/usuarios" data-rota="usuarios" class="so-admin" data-ic="escudo">Usuários</a>
+  <a href="#/config" data-rota="config" class="so-admin" data-ic="config">Configurações</a>
+  <a href="#/conta" data-rota="conta" data-ic="pessoa">Minha conta</a>
+  <a href="#/manual" data-rota="manual" data-ic="livro">Manual de uso</a>
+  <a href="#/sobre" data-rota="sobre" data-ic="info">Sobre, termos e privacidade</a>
   <a href="#" id="btInstalar" class="link-instalar" hidden>Instalar o aplicativo</a>
   <div id="rodapeMenu" class="rodape-menu"></div>
 </nav>
 <div id="fundoMenu" class="fundo-menu"></div>
 <main id="conteudo"><p class="carregando">Carregando…</p></main>
+<nav id="navInf" class="nav-inf">
+  <a href="#/inicio" data-rota="inicio" data-ic="inicio">Cobranças</a>
+  <a href="#/acordos" data-rota="acord" data-ic="acordo">Acordos</a>
+  <a href="#/cobranca/nova" data-rota="cobranca" data-ic="mais" class="nav-nova">Nova</a>
+  <a href="#/relatorios" data-rota="relatorios" data-ic="tabela">Planilhas</a>
+  <a href="#" id="btMenuInf" data-ic="menu">Menu</a>
+</nav>
 
 <div id="modal" class="modal" hidden><div class="modal-caixa" id="modalCaixa"></div></div>
 <div id="aviso" class="aviso" role="status"></div>

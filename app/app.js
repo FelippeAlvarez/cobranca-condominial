@@ -1,7 +1,7 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.4.1';
+const VERSAO = '1.5.0';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, acordos: {}, carregadoEm: 0 };
@@ -130,7 +130,7 @@ function marcarSujo() {
 }
 
 function destacarMenu(rota) {
-  $$('#menu a[data-rota]').forEach(a => a.classList.toggle('ativo', rota.startsWith(a.dataset.rota)));
+  $$('#menu a[data-rota], #navInf a[data-rota]').forEach(a => a.classList.toggle('ativo', rota.startsWith(a.dataset.rota)));
   document.body.classList.remove('menu-aberto');
 }
 
@@ -159,8 +159,15 @@ async function rotear() {
 const cabecalho = (titulo, sub = '', acoes = '', voltar = '') => `<div class="cab-pagina"><div>${voltar ? `<a class="voltar" href="${voltar}">&larr; Voltar</a>` : ''}<h1>${esc(titulo)}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div><div class="acoes">${acoes}</div></div>`;
 const optCondominios = sel => Object.values(D.condominios).sort((a, b) => comparar(a.razao, b.razao))
   .map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.razao)}</option>`).join('');
-const chipTipo = cob => cob.tipo === 'judicial' ? '<span class="chip pendente">Judicial</span>' : '<span class="chip aberto">Extrajudicial</span>';
-const chipSit = cob => ((cob.situacao || 'ativa') === 'ativa' ? '' : ' <span class="chip neutro">Encerrada</span>') + (Object.values(D.acordos || {}).some(a => a.situacao === 'aceito' && (a.cobrancas || []).includes(cob.id)) ? ' <span class="chip aberto">Em acordo</span>' : '');
+const chipTipo = cob => cob.tipo === 'judicial' ? '<span class="chip jud">Judicial</span>' : '<span class="chip ext">Extrajudicial</span>';
+const emAcordo = cob => Object.values(D.acordos || {}).some(a => a.situacao === 'aceito' && (a.cobrancas || []).includes(cob.id));
+const chipSit = cob => ((cob.situacao || 'ativa') === 'ativa' ? '' : ' <span class="chip neutro">Encerrada</span>') + (emAcordo(cob) ? ' <span class="chip acordo">Em acordo</span>' : '');
+const iniciais = s => (String(s || '').replace(/^(cond(om[ií]nio)?\.?|edif[ií]cio|ed\.)\s+/i, '').match(/[A-Za-zÀ-ÿ0-9]+/g) || ['?']).filter(p => p.length > 2 || /\d/.test(p)).slice(0, 2).map(p => p[0]).join('').toUpperCase() || '?';
+// Cor estável para cada condomínio (iniciais da lista e gráficos)
+const CORES_COND = [['#dbeafe', '#1d4ed8'], ['#fef3c7', '#a16207'], ['#dcfce7', '#15803d'], ['#ede9fe', '#6d28d9'], ['#fce7f3', '#be185d'], ['#e0f2fe', '#0369a1'], ['#ffedd5', '#c2410c'], ['#f1f5f9', '#475569']];
+const corCond = id => CORES_COND[[...String(id || '')].reduce((s, c) => (s * 31 + c.charCodeAt(0)) >>> 0, 7) % CORES_COND.length];
+// Dias desde o vencimento mais antigo em aberto
+const diasAtraso = (cob, data) => { const v = (cob.cotas || []).filter(c => !c.pago && Number(c.valor) > 0 && c.vencimento && c.vencimento < data).map(c => c.vencimento).sort()[0]; return v ? diasEntre(v, data) : 0; };
 
 /* ================= Início ================= */
 async function telaInicio() {
@@ -170,40 +177,112 @@ async function telaInicio() {
   const st = { busca: localStorage.getItem('cc-busca') || '', cond: '', tipo: 'todas', sit: 'ativa' };
   const calc = {};
   const totalDe = cob => (calc[cob.id] = calc[cob.id] || calcularCobranca(cob, data)).total;
-  const filtrar = () => cobs.filter(c => (!st.cond || c.condominioId === st.cond) && (st.tipo === 'todas' || c.tipo === st.tipo)
+  const ATRASO_LONGO = 365;
+  const critica = c => !emAcordo(c) && diasAtraso(c, data) > ATRASO_LONGO;
+  const passaTipo = (c, t) => t === 'todas' || (t === 'acordo' ? emAcordo(c) : t === 'critico' ? critica(c) : c.tipo === t);
+  const filtrar = () => cobs.filter(c => (!st.cond || c.condominioId === st.cond) && passaTipo(c, st.tipo)
     && (st.sit === 'todas' || (c.situacao || 'ativa') === st.sit)
     && (!st.busca || normalizar([nomeCond(c), c.unidade, devedoresCurto(c), c.processo, ...(c.devedores || []).map(d => soDigitos(d.documento))].join(' ')).includes(normalizar(st.busca))));
   const ativas = cobs.filter(c => (c.situacao || 'ativa') === 'ativa');
-  const kpi = (r, v, s = '') => `<div class="kpi"><span>${r}</span><b>${v}</b>${s ? `<small>${s}</small>` : ''}</div>`;
   const total = ativas.reduce((s, c) => s + cent(totalDe(c)), 0) / 100;
-  $('#conteudo').innerHTML = cabecalho('Cobranças', `Valores atualizados até hoje (${fmtData(data)}) com os critérios de cada cobrança.`,
-    `<a class="bt primario" href="#/cobranca/nova">Nova cobrança</a>`) +
+  const somaDe = l => l.reduce((s, c) => s + cent(totalDe(c)), 0) / 100;
+  const jud = ativas.filter(c => c.tipo === 'judicial'), ext = ativas.filter(c => c.tipo !== 'judicial');
+  // Acordos em andamento e os que têm parcela vencida em aberto
+  const acordosAtivos = Object.values(D.acordos || {}).filter(a => a.situacao === 'aceito');
+  const comVencida = acordosAtivos.filter(a => parcelasDoAcordo(a).some(p => restanteNominal(p) > 0 && p.venc < data));
+  const criticas = ativas.filter(critica);
+  const kpi = (icone, cor, rot, v, s = '', acao = '') => `<div class="kpi2"${acao ? ` role="button" tabindex="0" data-filtro="${acao}" style="cursor:pointer"` : ''}><div class="t"><span class="bx ${cor}">${ic(icone)}</span>${rot}</div><b>${v}</b>${s ? `<small>${s}</small>` : ''}</div>`;
+  const h = new Date().getHours(), nome = (Auth.usuario?.nome || '').split(' ')[0];
+  // Débito por condomínio (judicial e extrajudicial), os maiores primeiro
+  const porCond = {};
+  ativas.forEach(c => { const k = c.condominioId; porCond[k] = porCond[k] || { id: k, j: 0, e: 0 }; porCond[k][c.tipo === 'judicial' ? 'j' : 'e'] += totalDe(c); });
+  const conds = Object.values(porCond).sort((a, b) => (b.j + b.e) - (a.j + a.e));
+  const maior = Math.max(1, ...conds.map(x => x.j + x.e));
+  const graficos = ativas.length ? `<div class="graficos">
+    <div class="cartao"><div class="cartao-cab"><h2>Débito por condomínio</h2><div class="leg"><span><i style="background:#1f4e79"></i>Judicial</span><span><i style="background:#c8962e"></i>Extrajudicial</span></div></div>
+      <div class="barras-cond">${conds.slice(0, 6).map(x => `<a class="barra-cond" href="#/condominio/${x.id}"><span class="nome">${esc(D.condominios[x.id]?.razao || '(sem condomínio)')}</span><b>${fmtMoeda(x.j + x.e)}</b>
+        <span class="trilho"><i style="width:${x.j / maior * 100}%;background:#1f4e79"></i><i style="width:${x.e / maior * 100}%;background:#c8962e"></i></span></a>`).join('')}
+      ${conds.length > 6 ? `<small class="dica">E mais ${conds.length - 6} condomínio(s), somando ${fmtMoeda(conds.slice(6).reduce((s, x) => s + x.j + x.e, 0))}.</small>` : ''}</div></div>
+    <div class="cartao"><div class="cartao-cab"><h2>Por tipo de cobrança</h2></div>${rosca([[somaDe(jud), '#1f4e79', `Judicial (${jud.length})`], [somaDe(ext), '#c8962e', `Extrajudicial (${ext.length})`]], ativas.length, ativas.length === 1 ? 'cobrança' : 'cobranças')}</div>
+  </div>` : '';
+  $('#conteudo').innerHTML = cabecalho(`${h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'}${nome ? ', ' + nome : ''}`, `Valores atualizados até hoje (${fmtData(data)}) com os critérios de cada cobrança.`,
+    `<a class="bt primario" href="#/cobranca/nova">${ic('mais')}Nova cobrança</a>`).replace('cab-pagina', 'cab-pagina saudacao') +
     (Armaz.conflitos.length ? `<p class="alerta">O Dropbox criou cópias com conflito (duas pessoas alteraram o mesmo arquivo ao mesmo tempo). Elas não são lidas pelo programa. Confira e apague na pasta dos dados: ${Armaz.conflitos.map(esc).join(', ')}</p>` : '') +
     (!Object.keys(D.condominios).length ? `<div class="cartao destaque"><h2>Primeiros passos</h2><ol>
       <li>Preencha os dados do escritório e os padrões de encargos em <a href="#/config">Configurações</a>.</li>
       <li>Cadastre o condomínio (cliente) em <a href="#/condominio/novo">Condomínios</a>.</li>
       <li>Crie as cobranças, uma por unidade, ou importe uma planilha com várias unidades na tela do condomínio.</li></ol></div>` : '') +
-    `<div class="kpis">${kpi('Cobranças ativas', ativas.length, `${ativas.filter(c => c.tipo === 'judicial').length} judiciais · ${ativas.filter(c => c.tipo !== 'judicial').length} extrajudiciais`)}
-      ${kpi('Total atualizado (ativas)', fmtMoeda(total))}${kpi('Condomínios', Object.keys(D.condominios).length)}${kpi('Devedores', listaDevedores(ativas).length)}</div>
-    <div class="cartao"><div class="barra-filtros">
-      <input type="search" id="fBusca" placeholder="Buscar unidade, devedor, CPF, processo…" value="${esc(st.busca)}">
-      <select id="fCond"><option value="">Todos os condomínios</option>${optCondominios(st.cond)}</select>
-      <select id="fTipo"><option value="todas">Judiciais e extrajudiciais</option><option value="judicial">Judiciais</option><option value="extrajudicial">Extrajudiciais</option></select>
-      <select id="fSit"><option value="ativa">Ativas</option><option value="encerrada">Encerradas</option><option value="todas">Todas</option></select>
+    `<div class="kpis2">${kpi('dinheiro', 'bx-pri', 'Total a receber', fmtMoeda(total), `cobranças ativas de ${Object.keys(porCond).length} condomínio(s)`)}
+      ${kpi('balanca', 'bx-info', 'Cobranças ativas', ativas.length, `${jud.length} judiciais · ${ext.length} extrajudiciais`)}
+      ${kpi('acordo', 'bx-ok', 'Acordos em andamento', acordosAtivos.length, acordosAtivos.length ? (comVencida.length ? `<span class="er">${comVencida.length} com parcela vencida</span>` : '<span class="ok">todos em dia</span>') : 'nenhum no momento', 'acordos')}
+      ${kpi('alerta', criticas.length ? 'bx-er' : 'bx-ok', 'Atraso de mais de 1 ano', criticas.length, criticas.length ? 'fora de acordo · toque para ver' : 'nenhuma cobrança', criticas.length ? 'critico' : '')}</div>
+    ${graficos}
+    <div class="cartao lista-cartao"><div class="filtros2">
+      <div class="busca">${ic('busca')}<input type="search" id="fBusca" placeholder="Buscar unidade, devedor, CPF, processo…" value="${esc(st.busca)}"></div>
+      <div class="pilulas" id="fTipo"></div>
+      <div class="row-sel" style="display:flex;gap:8px;flex-wrap:wrap"><select id="fCond"><option value="">Todos os condomínios</option>${optCondominios(st.cond)}</select>
+      <select id="fSit"><option value="ativa">Ativas</option><option value="encerrada">Encerradas</option><option value="todas">Todas</option></select></div>
     </div><div id="lista"></div></div>`;
   const desenhar = () => {
+    const base = cobs.filter(c => (!st.cond || c.condominioId === st.cond) && (st.sit === 'todas' || (c.situacao || 'ativa') === st.sit));
+    const pil = [['todas', 'Todas'], ['judicial', 'Judiciais'], ['extrajudicial', 'Extrajudiciais'], ['acordo', 'Em acordo'], ['critico', 'Atraso > 1 ano']];
+    $('#fTipo').innerHTML = pil.map(([k, t]) => { const n = base.filter(c => passaTipo(c, k)).length; return k === 'critico' && !n && st.tipo !== k ? '' : `<button class="pilula ${st.tipo === k ? 'on' : ''}" data-t="${k}">${t}<span class="c">${n}</span></button>`; }).join('');
+    $$('#fTipo .pilula').forEach(b => b.addEventListener('click', () => { st.tipo = b.dataset.t; desenhar(); }));
     const l = filtrar();
-    $('#lista').innerHTML = l.length ? `<div class="rolagem"><table class="tabela clicavel"><thead><tr><th>Condomínio</th><th>Unidade</th><th>Devedor(es)</th><th>Cobrança</th><th class="num">Cotas</th><th class="num">Total atualizado</th></tr></thead><tbody>
-      ${l.map(c => `<tr data-id="${c.id}"><td>${esc(nomeCond(c))}</td><td>${esc(c.unidade)}</td><td>${esc(devedoresCurto(c))}</td><td>${chipTipo(c)}${chipSit(c)}${c.processo ? `<div class="dica">${esc(c.processo)}</div>` : ''}</td>
-        <td class="num">${(c.cotas || []).filter(x => !x.pago).length}</td><td class="num">${fmtNum(totalDe(c))}</td></tr>`).join('')}</tbody></table></div>`
+    const maiorL = Math.max(1, ...l.map(totalDe));
+    $('#lista').innerHTML = l.length ? `<div class="lista-cob"><div class="lc-cab"><span>Unidade / condomínio</span><span>Devedor(es)</span><span>Tipo</span><span>Situação</span><span style="text-align:right">Total atualizado</span><span></span></div>
+      ${l.map(c => {
+        const [fundo, cor] = corCond(c.condominioId), dias = diasAtraso(c, data), abertas = (c.cotas || []).filter(x => !x.pago).length;
+        const sit = (c.situacao || 'ativa') !== 'ativa' ? '<span class="chip neutro">Encerrada</span>' : emAcordo(c) ? '<span class="chip acordo">Em acordo</span>' : dias > ATRASO_LONGO ? '<span class="chip critico">Atraso longo</span>' : '<span class="chip andamento">Em cobrança</span>';
+        return `<a class="lc" href="#/cobranca/${c.id}"><div class="pes"><span class="ini" style="background:${fundo};color:${cor}">${esc(iniciais(nomeCond(c)))}</span><div><b>${esc(c.unidade || 'Unidade')}</b><small>${esc(nomeCond(c))}</small></div></div>
+          <div class="dev"><span class="nm">${esc(devedoresCurto(c) || '—')}</span><small>${abertas} cota(s)${c.processo ? ' · ' + esc(c.processo) : ''}</small></div>
+          <div class="tags">${chipTipo(c)}<span class="so-cel">${sit}</span></div>
+          <div class="sit">${sit}${dias ? `<small style="margin-top:4px">${dias} dias de atraso</small>` : ''}</div>
+          <div class="val"><b>${fmtMoeda(totalDe(c))}</b><div class="barv"><i style="width:${Math.max(2, totalDe(c) / maiorL * 100)}%"></i></div><small>${dias ? dias + ' dias' : ''}</small></div><span class="seta">${ic('seta')}</span></a>`;
+      }).join('')}</div>`
       : '<p class="vazio">Nenhuma cobrança encontrada.</p>';
-    $$('#lista tr[data-id]').forEach(tr => tr.addEventListener('click', () => { location.hash = '#/cobranca/' + tr.dataset.id; }));
   };
   $('#fBusca').addEventListener('input', e => { st.busca = e.target.value; localStorage.setItem('cc-busca', st.busca); desenhar(); });
   $('#fCond').addEventListener('change', e => { st.cond = e.target.value; desenhar(); });
-  $('#fTipo').addEventListener('change', e => { st.tipo = e.target.value; desenhar(); });
   $('#fSit').addEventListener('change', e => { st.sit = e.target.value; desenhar(); });
+  $$('[data-filtro]').forEach(k => k.addEventListener('click', () => {
+    if (k.dataset.filtro === 'acordos') { location.hash = '#/acordos'; return; }
+    st.tipo = k.dataset.filtro; desenhar(); $('#lista').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
   desenhar();
+}
+
+// Cor de cada linha do resumo do cálculo (legenda do extrato e da barra de composição)
+function corItemResumo(rot, e) {
+  if (e) return '';
+  const r = semAcento(rot).toLowerCase();
+  return r.includes('523') ? '#dc2626' : r.startsWith('cotas') ? '#1f4e79' : r.includes('contratuais') ? '#6d28d9' : r.includes('correcao') ? '#4f86c0'
+    : r.includes('juros') ? '#c8962e' : r.includes('multa') ? '#e0b25a' : r.includes('quitado') ? '#15803d' : r.includes('despesas') ? '#94a3b8' : r.includes('sucumbenciais') ? '#0d9488' : '#94a3b8';
+}
+
+// Critérios do cálculo em cartões com ícone
+function cartoesCriterios(r) {
+  const p = r.p, c = [];
+  if (p.tipoJuros === 'selic') c.push(['alta', 'bx-pri', 'Correção e juros pela SELIC', 'Taxa SELIC acumulada, pro rata die']);
+  else c.push(['alta', 'bx-pri', p.indice === 'Nenhum' ? 'Sem correção monetária' : `Correção pelo ${p.indice === 'UFIR-RJ' ? 'índice UFIR-RJ' : p.indice}`, p.indice === 'Nenhum' ? 'Valores originários sem atualização' : 'Desde o vencimento de cada cota']);
+  if (p.tipoJuros !== 'selic') c.push(['pct', 'bx-ac', p.tipoJuros === 'nenhum' ? 'Sem juros de mora' : p.tipoJuros === 'legal' ? 'Juros pela taxa legal (art. 406 do CC)' : `Juros de ${fmtPct(p.juros)}% ao mês, pro rata die`, `Multa de ${fmtPct(p.multa)}% sobre o valor corrigido`]);
+  else c.push(['pct', 'bx-ac', `Multa de ${fmtPct(p.multa)}%`, 'Sobre o valor corrigido']);
+  if (p.lei14905) c.push(['balanca', 'bx-info', 'Lei 14.905/2024 aplicada', 'A partir de 30/08/2024: correção pelo IPCA e juros pela taxa legal']);
+  if (p.honContr) c.push(['pessoa', 'bx-roxo', `Honorários contratuais de ${fmtPct(p.honContr)}%`, p.honColuna ? 'Em coluna após a cota, compondo a base dos encargos' : p.embutir ? 'Embutidos no valor originário das cotas' : 'Em linha separada, sobre o débito atualizado']);
+  if (r.amort.length) c.push(['dinheiro', 'bx-ok', `${r.amort.length} pagamento(s) abatido(s)`, `${fmtMoeda(r.amort.reduce((s, a) => s + a.valor, 0))} no total · ${r.amort.every(a => a.a.imputacao === 'principal') ? 'principal primeiro' : 'juros primeiro (art. 354 do CC)'}`]);
+  if (r.suc.tipo !== 'nenhum' && r.suc.valor) c.push(['balanca', 'bx-info', 'Honorários sucumbenciais', r.suc.tipo === 'percentual' ? `${fmtPct(r.suc.pct)}% sobre ${fmtMoeda(r.suc.base)}` : `Valor fixo${r.suc.fator !== 1 ? ', corrigido' : ''}: ${fmtMoeda(r.suc.valor)}`]);
+  if (r.art523) c.push(['alerta', 'bx-er', 'Art. 523, § 1º, do CPC', `${[r.art523.multaPct && `multa de ${fmtPct(r.art523.multaPct)}%`, r.art523.honPct && `honorários de ${fmtPct(r.art523.honPct)}%`].filter(Boolean).join(' e ')} sobre ${fmtMoeda(r.art523.base)}`]);
+  return c.map(([i, cor, t, s]) => `<div class="it"><span class="bx ${cor}">${ic(i)}</span><div><b>${esc(t)}</b><small>${esc(s)}</small></div></div>`).join('');
+}
+
+// Gráfico de rosca: partes [[valor, cor, rótulo]], com o número no centro
+function rosca(partes, centro, rotCentro) {
+  const tot = partes.reduce((s, p) => s + p[0], 0) || 1;
+  let ac = 0;
+  const arcos = partes.filter(p => p[0] > 0).map(([v, cor]) => { const pct = v / tot * 100, d = `<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${cor}" stroke-width="6" stroke-dasharray="${pct} ${100 - pct}" stroke-dashoffset="${25 - ac}"/>`; ac += pct; return d; }).join('');
+  return `<div class="rosca"><svg viewBox="0 0 42 42"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="var(--borda-suave)" stroke-width="6"/>${arcos}
+    <text x="21" y="21.5" text-anchor="middle" font-size="7" font-weight="700" fill="var(--texto)">${centro}</text><text x="21" y="27" text-anchor="middle" font-size="3" fill="var(--suave)">${esc(rotCentro)}</text></svg>
+    <div class="itens">${partes.map(([v, cor, r]) => `<div><span><i class="pt-cor" style="background:${cor}"></i>${esc(r)}</span><b>${Math.round(v / tot * 100)}%</b></div><div class="rosca-v">${fmtMoeda(v)}</div>`).join('')}</div></div>`;
 }
 
 /* ================= Condomínios ================= */
@@ -226,21 +305,37 @@ function camposEncargosHTML(valores, herdado, rotuloHerda) {
   const hh = herdado ? modoHonDe(herdado.honColuna ? 'coluna' : herdado.embutir) : '';
   const emb = vazio(valores?.embutir) || modoHonDe(valores.embutir) === hh ? '' : modoHonDe(valores.embutir);
   const lei = sn('lei14905'), tj = v('tipoJuros');
-  return `<div class="grade-form">
-    <div class="campo"><label>Índice de correção</label><select data-p="indice">${herdado ? `<option value="">${esc(herdado.indice)} (${rotuloHerda})</option>` : ''}${INDICES.map(i => `<option ${v('indice') === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
-    <div class="campo"><label>Juros de mora</label><select data-p="tipoJuros">${herdado ? `<option value="">${esc(TIPOS_JUROS[herdado.tipoJuros] || TIPOS_JUROS.mensal)} (${rotuloHerda})</option>` : ''}
-      ${Object.entries(TIPOS_JUROS).map(([k, t]) => `<option value="${k}" ${tj === k || (!herdado && !tj && k === 'mensal') ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-    <div class="campo"><label>Juros (% ao mês)</label><input data-p="juros" inputmode="decimal" value="${esc(v('juros') === '' ? '' : fmtPct(v('juros')))}" ${ph('juros')}><small>Para "Percentual ao mês".</small></div>
-    <div class="campo"><label>Multa (%)</label><input data-p="multa" inputmode="decimal" value="${esc(v('multa') === '' ? '' : fmtPct(v('multa')))}" ${ph('multa')}></div>
-    <div class="campo w2"><label>Lei 14.905/2024</label><select data-p="lei14905">
-      ${herdado ? `<option value="">${herdado.lei14905 ? 'Aplicar' : 'Não aplicar'} (${rotuloHerda})</option>` : ''}
-      <option value="nao" ${lei === 'nao' || (!herdado && lei !== 'sim') ? 'selected' : ''}>Não aplicar</option><option value="sim" ${lei === 'sim' ? 'selected' : ''}>Aplicar: a partir de 30/08/2024, IPCA e taxa legal</option></select>
-      <small>Se aplicada, a partir de 30/08/2024 a correção passa a ser pelo IPCA e os juros pela taxa legal (art. 406 do CC).</small></div>
-    <div class="campo"><label>Honorários contratuais (%)</label><input data-p="honContr" inputmode="decimal" value="${esc(v('honContr') === '' ? '' : fmtPct(v('honContr')))}" ${ph('honContr')}></div>
-    <div class="campo w2"><label>Honorários contratuais na planilha</label><select data-p="embutir">
-      ${herdado ? `<option value="">${MODOS_HON[hh]} (${rotuloHerda})</option>` : ''}
-      ${Object.entries(MODOS_HON).filter(([k]) => !herdado || k !== hh).map(([k, t]) => `<option value="${k}" ${emb === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      <small>Embutidos: o valor originário de cada cota já inclui o percentual, sem menção. Em coluna: os honorários aparecem logo após o valor da cota e a correção, os juros e a multa incidem sobre a soma.</small></div>
+  // Botões de escolha: a opção igual à herdada fica marcada com o selo "padrão" e, escolhida, volta a herdar (valor vazio)
+  const seg = (chave, opcoes, atual, her, padrao, classe = 'seg') => {
+    const marcado = atual || her || padrao;
+    return `<div class="${classe}" data-seg="${chave}"${her ? ` data-her="${her}"` : ''}>${opcoes.map(([k, t, s, mini]) => classe === 'seg'
+      ? `<button type="button" data-v="${k}" class="${k === marcado ? 'on' : ''}">${t}${her === k ? `<span class="selo-her">${esc(rotuloHerda)}</span>` : ''}</button>`
+      : `<button type="button" data-v="${k}" class="op-hon ${k === marcado ? 'on' : ''}"><span class="rd"></span><span><b>${t}${her === k ? `<span class="selo-her">${esc(rotuloHerda)}</span>` : ''}</b><small>${s}</small><span class="mini">${mini}</span></span></button>`).join('')}
+      <input type="hidden" data-p="${chave}" value="${esc(atual)}"></div>`;
+  };
+  const her = k => herdado ? String(k) : '';
+  const m = (...c) => c.map(([t, h]) => `<span class="${h ? 'h' : ''}">${t}</span>`).join('');
+  return `<div class="grupos-enc">
+    <div class="grupo-enc"><div><h3>${ic('alta')}Correção monetária</h3><p>${herdado ? `Em branco, vale o critério ${esc(rotuloHerda)}. O selo indica a opção herdada.` : 'Padrões usados pelos condomínios e cobranças sem critério próprio.'}</p></div>
+      <div class="grade-form">
+        <div class="campo"><label>Índice de correção</label><select data-p="indice">${herdado ? `<option value="">${esc(herdado.indice)} (${rotuloHerda})</option>` : ''}${INDICES.map(i => `<option ${v('indice') === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
+        <div class="campo"><label>Lei 14.905/2024</label>${seg('lei14905', [['nao', 'Não aplicar'], ['sim', 'Aplicar']], lei, herdado ? (herdado.lei14905 ? 'sim' : 'nao') : '', 'nao')}
+          <small>Se aplicada, a partir de 30/08/2024 a correção passa a ser pelo IPCA e os juros pela taxa legal (art. 406 do CC).</small></div>
+      </div></div>
+    <div class="grupo-enc"><div><h3>${ic('pct')}Juros e multa</h3><p>Juros simples, pro rata die, sobre o valor corrigido. A multa incide sobre o valor corrigido.</p></div>
+      <div class="grade-form">
+        <div class="campo wfull"><label>Juros de mora</label>${seg('tipoJuros', [['mensal', '% ao mês'], ['legal', 'Taxa legal'], ['selic', 'SELIC'], ['nenhum', 'Sem juros']], tj, her(herdado?.tipoJuros || 'mensal'), 'mensal')}</div>
+        <div class="campo"><label>Juros (% ao mês)</label><input data-p="juros" inputmode="decimal" value="${esc(v('juros') === '' ? '' : fmtPct(v('juros')))}" ${ph('juros')}><small>Para "% ao mês". A SELIC já engloba correção e juros.</small></div>
+        <div class="campo"><label>Multa (%)</label><input data-p="multa" inputmode="decimal" value="${esc(v('multa') === '' ? '' : fmtPct(v('multa')))}" ${ph('multa')}></div>
+      </div></div>
+    <div class="grupo-enc"><div><h3>${ic('pessoa')}Honorários contratuais</h3><p>Escolha como aparecem na planilha. Nas opções "coluna" e "embutidos" o total é o mesmo; muda só a apresentação.</p></div>
+      <div class="grade-form">
+        <div class="campo"><label>Percentual (%)</label><input data-p="honContr" inputmode="decimal" value="${esc(v('honContr') === '' ? '' : fmtPct(v('honContr')))}" ${ph('honContr')}></div>
+        <div class="campo wfull"><label>Na planilha</label>${seg('embutir', [
+          ['nao', 'Linha separada', 'Sobre o débito atualizado, no resumo', m(['Cota'], ['Correção'], ['Total'], ['+ Honorários', 1])],
+          ['coluna', 'Coluna após a cota', 'Encargos sobre a cota + honorários', m(['Cota'], ['Honorários', 1], ['Correção'])],
+          ['sim', 'Embutidos na cota', 'Sem menção na planilha', m(['Cota + honorários', 1], ['Correção'])]], emb, hh, 'nao', 'opcoes-hon')}</div>
+      </div></div>
   </div>`;
 }
 
@@ -342,8 +437,19 @@ function telaCobranca(id, params) {
   }
   garantirIndices().then(() => { if (document.body.contains($('#calcResumo'))) recalcular(); });
 
-  $('#conteudo').innerHTML = cabecalho(nova ? 'Nova cobrança' : `${cob.unidade || 'Unidade'} - ${nomeCond(cob)}`,
-    nova ? '' : `${chipTipo(cob)}${chipSit(cob)} <span class="dica">${cob.alteradoPor ? 'Alterada por ' + esc(cob.alteradoPor) + ' em ' : 'Alterada em '}${new Date(cob.alteradoEm).toLocaleString('pt-BR')}</span>`, '', '#/inicio') + `
+  const guias = [['dados', 'Dados', 'pessoa'], ['cotas', 'Cotas', 'calendario'], ['despesas', 'Despesas', 'recibo'], ['pagamentos', 'Pagamentos', 'dinheiro'], ['encargos', 'Encargos', 'pct'], ['calculo', 'Cálculo', 'tabela']];
+  const guiaIni = nova ? 'dados' : (sessionStorage.getItem('cc-guia') || 'cotas');
+  $('#conteudo').innerHTML = `<div class="heroi">
+    <div><a class="voltar" href="#/inicio">${ic('voltar')}Cobranças${cob.condominioId ? ' / ' + esc(nomeCond(cob)) : ''}</a>
+      <h1 id="heroiTitulo">${esc(nova ? 'Nova cobrança' : `${cob.unidade || 'Unidade'} · ${nomeCond(cob)}`)}</h1>
+      <div class="meta">${nova ? '' : `${chipTipo(cob)}${chipSit(cob)}`}${devedoresCurto(cob) ? `<span class="m">${ic('pessoa')}${esc(devedoresCurto(cob))}</span>` : ''}
+        ${cob.tipo === 'judicial' && cob.processo ? `<span class="m">${ic('balanca')}Proc. ${esc(cob.processo)}${cob.juizo ? ' · ' + esc(cob.juizo) : ''}</span>` : ''}
+        ${nova ? '' : `<span class="m dica">${cob.alteradoPor ? 'Alterada por ' + esc(cob.alteradoPor) + ' em ' : 'Alterada em '}${new Date(cob.alteradoEm).toLocaleString('pt-BR')}</span>`}</div></div>
+    <div class="tot"><small>Total devido em <span id="heroiData">${fmtData(st.data)}</span></small><b id="heroiTotal">—</b><span id="heroiSub"></span></div>
+    <div class="acs"><button class="bt" id="expVer">${ic('olho')}Visualizar</button><button class="bt" id="expPdf">${ic('arquivo')}Salvar PDF</button><button class="bt" id="expXlsx">${ic('tabela')}Salvar Excel</button>${nova ? '' : `<a class="bt acento" href="#/acordo/novo?cob=${cob.id}">${ic('acordo')}Negociar acordo</a>`}</div>
+  </div>
+  <div class="guias" id="guias" role="tablist">${guias.map(([k, t, i]) => `<button type="button" class="guia" role="tab" data-guia="${k}">${ic(i)}${t}<span class="n" data-n="${k}" hidden></span></button>`).join('')}</div>
+  <section class="painel-guia" data-painel="dados">
   <div class="cartao"><h2>Dados da cobrança</h2>
     <div class="grade-form">
       <div class="campo w2"><label>Condomínio (credor) *</label><select data-c="condominioId"><option value="">— escolha —</option>${optCondominios(cob.condominioId)}</select></div>
@@ -358,18 +464,24 @@ function telaCobranca(id, params) {
     </div></div>
 
   <div class="cartao"><div class="cartao-cab"><h2>Devedores</h2><button class="bt pequeno" id="btAddDev">+ Adicionar devedor</button></div><div id="devedores"></div></div>
+  </section>
 
+  <section class="painel-guia" data-painel="cotas">
   <div class="cartao"><div class="cartao-cab"><h2>Cotas em aberto</h2><div class="acoes">
       <button class="bt pequeno" id="btAddCota">+ Adicionar cota</button><button class="bt pequeno" id="btSeqCotas">Lançar meses em sequência</button>
       <button class="bt pequeno" id="btImpCotas">Importar planilha</button><button class="bt pequeno" id="btOrdCotas">Ordenar por vencimento</button></div></div>
     <p class="dica">Valores originários de cada mês. Marque "Paga" para tirar a cota do cálculo sem apagá-la.${Auth.ehAdmin() ? ' <a href="#" id="sugCotas">Editar as sugestões de descrição</a>' : ''}</p>
-    <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Competência</th><th>Descrição</th><th>Vencimento</th><th class="num">Valor originário</th><th class="cen">Paga</th><th></th></tr></thead><tbody id="cotas"></tbody></table></div>
+    <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Competência</th><th>Descrição</th><th>Vencimento</th><th>Atraso</th><th class="num">Valor originário</th><th class="cen">Paga</th><th></th></tr></thead><tbody id="cotas"></tbody></table></div>
     <div id="totCotas" class="dica" style="margin-top:8px"></div></div>
+  </section>
 
+  <section class="painel-guia" data-painel="despesas">
   <div class="cartao"><div class="cartao-cab"><h2>Despesas pagas</h2><div class="acoes"><button class="bt pequeno" id="btAddDesp">+ Adicionar despesa</button><button class="bt pequeno" id="btImpDesp">Importar planilha</button></div></div>
     <p class="dica">Custas, certidões, registros e outras despesas, com a data do pagamento. Marque "Corrigir" para atualizar o valor desde o pagamento pelo índice da cobrança. "Id. no processo" (opcional) indica onde está o comprovante nos autos e sai na planilha.${Auth.ehAdmin() ? ' <a href="#" id="sugRubricas">Editar as sugestões de rubrica</a>' : ''}</p>
     <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Data do pagamento</th><th>Rubrica</th><th>Descrição</th><th title="Id. do comprovante no processo eletrônico">Id. no processo</th><th class="num">Valor</th><th class="cen">Corrigir</th><th></th></tr></thead><tbody id="despesas"></tbody></table></div></div>
+  </section>
 
+  <section class="painel-guia" data-painel="encargos">
   <div class="cartao" id="encCob"><h2>Encargos e honorários contratuais</h2>
     <p class="dica">Em branco, valem os critérios do condomínio (ou os padrões das Configurações).</p><div id="encCampos"></div></div>
 
@@ -383,11 +495,15 @@ function telaCobranca(id, params) {
       <div class="campo suc-fixo"><label class="inline" style="margin-top:22px"><input type="checkbox" id="sucCorrigir" ${cob.sucumbencia.corrigir ? 'checked' : ''}> Corrigir desde a fixação</label></div>
     </div>
     <p class="dica">Percentual: incide sobre o débito atualizado (cotas com correção, juros e multa, mais os honorários contratuais), e também sobre as despesas se marcado.</p></div>
+  </section>
 
+  <section class="painel-guia" data-painel="pagamentos">
   <div class="cartao"><div class="cartao-cab"><h2>Pagamentos recebidos (amortizações)</h2><button class="bt pequeno" id="btAddPag">+ Adicionar pagamento</button></div>
     <p class="dica">Pagamentos parciais do devedor. O débito é atualizado até a data de cada pagamento e o valor é abatido. Imputação "Juros primeiro": juros e multa vencidos, depois o principal (art. 354 do CC).</p>
     <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Data</th><th class="num">Valor</th><th>Imputação</th><th>Abater de</th><th class="cen so-523">No prazo do art. 523</th><th>Observação</th><th></th></tr></thead><tbody id="pagamentos"></tbody></table></div></div>
+  </section>
 
+  <section class="painel-guia" data-painel="encargos">
   <div class="cartao so-judicial"><h2>Art. 523, § 1º, do CPC (cumprimento de sentença)</h2>
     <label class="inline"><input type="checkbox" id="a523Aplicar"> Incluir multa e honorários do art. 523 (débito não pago no prazo de 15 dias)</label>
     <div id="a523Campos" class="grade-form" style="margin-top:10px">
@@ -399,19 +515,39 @@ function telaCobranca(id, params) {
         <label class="inline"><input type="checkbox" id="a523BaseSuc"> Honorários sucumbenciais</label></div>
       <p class="dica wfull">Calculados sobre o débito atualizado até a data do cálculo. Pagamentos feitos no prazo (marque "No prazo do art. 523" no pagamento) reduzem a base (§ 2º); os demais, não.</p>
     </div></div>
+  </section>
 
-  <div class="cartao destaque"><div class="cartao-cab"><h2>Cálculo</h2><label class="inline">Atualizar até <input type="date" id="calcData" value="${st.data}"></label></div>
-    <div class="colunas2"><div id="calcResumo" class="resumo"></div><div><p id="calcCrit" class="dica"></p><div id="calcAvisos"></div></div></div>
+  <section class="painel-guia" data-painel="calculo">
+  <div class="cartao"><div class="cartao-cab"><h2>Composição do débito</h2><label class="inline">Atualizar até <input type="date" id="calcData" value="${st.data}"></label></div>
+    <div class="calc2"><div><div id="compBarra" class="comp-barra"></div><div id="calcResumo" class="resumo extrato"></div></div>
+      <div><h2 style="font-size:14.5px">Critérios aplicados</h2><div id="calcCrit2" class="crit2"></div><div id="calcAvisos"></div>
+        <details class="detalhes"><summary>Texto dos critérios (como sai na planilha)</summary><p id="calcCrit" class="dica"></p></details></div></div>
     <details class="detalhes"><summary>Ver o cálculo de cada cota</summary><div id="calcDet" class="rolagem"></div></details>
-    <div class="acoes-linha"><button class="bt" id="expVer">Visualizar PDF</button><button class="bt" id="expPdf">Salvar PDF</button><button class="bt" id="expXlsx">Salvar Excel</button>${nova ? '' : `<a class="bt primario" href="#/acordo/novo?cob=${cob.id}">Negociar acordo</a>`}</div>
     ${nova ? '' : acordosDaCobranca(cob.id).map(x => `<p class="dica" style="margin-top:8px">Acordo de ${fmtData(x.data)}: ${chipAcordo(x.situacao)} <a href="#/acordo/${x.id}">abrir</a></p>`).join('')}
   </div>
+  </section>
 
   <div class="barra-salvar"><span id="estadoSalvar"></span>${nova ? '' : (Auth.ehAdmin() ? '<button class="bt perigo" id="btExcluir">Excluir</button>' : '') + '<button class="bt" id="btDuplicar">Duplicar</button>'}<button class="bt primario" id="btSalvar">Salvar</button></div>`;
+
+  // ---- Abas (a escolhida vale para as próximas cobranças abertas nesta sessão)
+  function mostrarGuia(g) {
+    $$('#guias .guia').forEach(b => { b.classList.toggle('on', b.dataset.guia === g); b.setAttribute('aria-selected', b.dataset.guia === g); });
+    $$('.painel-guia').forEach(p => { p.hidden = p.dataset.painel !== g; });
+    if (!nova) sessionStorage.setItem('cc-guia', g);
+  }
+  $$('#guias .guia').forEach(b => b.addEventListener('click', () => mostrarGuia(b.dataset.guia)));
+  mostrarGuia(guias.some(g => g[0] === guiaIni) ? guiaIni : 'dados');
+  const contarGuias = () => {
+    const n = { cotas: cob.cotas.filter(c => !c.pago && Number(c.valor) > 0).length, despesas: cob.despesas.filter(d => Number(d.valor) > 0).length, pagamentos: cob.pagamentos.filter(a => Number(a.valor) > 0).length };
+    $$('#guias [data-n]').forEach(s => { const v = n[s.dataset.n]; s.hidden = !v; s.textContent = v || ''; });
+  };
 
   // ---- Dados gerais
   const alterado = () => { marcarSujo(); recalcularLogo(); };
   $$('[data-c]').forEach(el => el.addEventListener('input', () => { cob[el.dataset.c] = el.value; alterado(); }));
+  $$('[data-c=unidade], [data-c=condominioId]').forEach(el => ['input', 'change'].forEach(ev => el.addEventListener(ev, () => {
+    $('#heroiTitulo').textContent = `${cob.unidade || 'Unidade'}${cob.condominioId ? ' · ' + nomeCond(cob) : ''}`;
+  })));
   $$('[data-c]').forEach(el => el.addEventListener('change', () => { if (el.dataset.c === 'condominioId') desenharEncargos(); }));
   const mostrarJudicial = () => { $$('.so-judicial').forEach(e => { e.hidden = cob.tipo !== 'judicial'; }); if ($('#a523Campos')) mostrar523(); };
   $$('input[name=tipo]').forEach(r => r.addEventListener('change', () => { cob.tipo = r.value; mostrarJudicial(); alterado(); }));
@@ -438,9 +574,10 @@ function telaCobranca(id, params) {
       <td><input type="month" data-k="competencia" value="${esc(c.competencia || '')}"></td>
       <td><input data-k="descricao" list="dlDescCotas" value="${esc(c.descricao || '')}" placeholder="Cota condominial"></td>
       <td><input type="date" data-k="vencimento" value="${esc(c.vencimento || '')}"></td>
+      <td class="c-atraso">${atrasoCota(c)}</td>
       <td><input data-k="valor" class="num" inputmode="decimal" value="${c.valor ? fmtNum(c.valor) : ''}"></td>
       <td class="cen"><input type="checkbox" data-k="pago" ${c.pago ? 'checked' : ''}></td>
-      <td><button class="bt-x" title="Remover">&times;</button></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Nenhuma cota lançada.</td></tr>';
+      <td><button class="bt-x" title="Remover">&times;</button></td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Nenhuma cota lançada.</td></tr>';
     $$('#cotas tr[data-i]').forEach(tr => {
       const c = cob.cotas[+tr.dataset.i];
       $$('[data-k]', tr).forEach(inp => inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
@@ -454,12 +591,19 @@ function telaCobranca(id, params) {
           c.vencimento = diaDoMes(inp.value, ant ? +ant.vencimento.slice(8) : 10);
           $('[data-k=vencimento]', tr).value = c.vencimento;
         }
+        if (k === 'vencimento' || k === 'pago' || k === 'competencia') $('.c-atraso', tr).innerHTML = atrasoCota(c);
         alterado(); totalCotas();
       }));
       $('[data-k=valor]', tr).addEventListener('change', e => { e.target.value = c.valor ? fmtNum(c.valor) : ''; });
       $('.bt-x', tr).addEventListener('click', () => { cob.cotas.splice(+tr.dataset.i, 1); desenharCotas(); alterado(); });
     });
     totalCotas();
+  }
+  // Atraso até hoje, em barra (cheia a partir de 1 ano)
+  function atrasoCota(c) {
+    if (c.pago) return '<span class="chip fechado">Paga</span>';
+    const d = ehData(c.vencimento) && c.vencimento < hoje() ? diasEntre(c.vencimento, hoje()) : 0;
+    return d ? `<span class="atraso"><span class="tr"><i style="width:${Math.min(100, d / 3.65)}%"></i></span>${d} d</span>` : '<span class="dica">a vencer</span>';
   }
   function totalCotas() {
     const abertas = cob.cotas.filter(c => !c.pago);
@@ -583,7 +727,18 @@ function telaCobranca(id, params) {
     const data = $('#calcData').value;
     if (!ehData(data)) return;
     const r = calcularCobranca(cob, data);
-    $('#calcResumo').innerHTML = itensResumo(r).map(([rot, v, e]) => `<div class="res-l ${e === 'f' ? 'final' : e === 'b' ? 'dest' : ''}"><span>${esc(rot)}</span><b>${fmtMoeda(v)}</b></div>`).join('');
+    const itens = itensResumo(r);
+    $('#calcResumo').innerHTML = itens.map(([rot, v, e]) => { const cor = corItemResumo(rot, e);
+      return `<div class="res-l ${e === 'f' ? 'final' : e === 'b' ? 'dest' : ''}"><span>${cor ? `<i class="pt-cor" style="background:${cor}"></i>` : ''}${esc(rot)}</span><b class="${v < 0 ? 'ok' : ''}">${fmtMoeda(v)}</b></div>`; }).join('');
+    // Barra com a composição do total (só as parcelas positivas)
+    const partes = itens.filter(([rot, v, e]) => !e && v > 0 && corItemResumo(rot)), soma = partes.reduce((s, x) => s + x[1], 0) || 1;
+    $('#compBarra').innerHTML = partes.map(([rot, v]) => `<i style="flex:${v / soma};background:${corItemResumo(rot)}" title="${esc(rot)}: ${fmtMoeda(v)}"></i>`).join('');
+    $('#calcCrit2').innerHTML = cartoesCriterios(r);
+    $('#heroiTotal').textContent = fmtMoeda(r.total);
+    $('#heroiData').textContent = fmtData(data);
+    const dias = diasAtraso(cob, data);
+    $('#heroiSub').textContent = `${r.cotas.length} cota(s) vencida(s)${dias ? ` · a mais antiga há ${dias} dias` : ''}`;
+    contarGuias();
     $('#calcCrit').textContent = descCriterios(r);
     $('#calcAvisos').innerHTML = notasCalculo(r).slice(1).map(n => `<p class="alerta">${esc(n)}</p>`).join('')
       + (r.p.embutir && !r.p.honColuna ? `<p class="dica">Honorários contratuais de ${fmtPct(r.p.honContr)}% embutidos no valor originário das cotas.</p>` : '');
@@ -614,10 +769,10 @@ function telaCobranca(id, params) {
 
   // ---- Salvar / excluir / duplicar
   function validar() {
-    if (!cob.condominioId) throw new Error('Escolha o condomínio (credor).');
-    if (!cob.unidade.trim()) throw new Error('Informe a unidade.');
+    if (!cob.condominioId) { mostrarGuia('dados'); throw new Error('Escolha o condomínio (credor).'); }
+    if (!cob.unidade.trim()) { mostrarGuia('dados'); throw new Error('Informe a unidade.'); }
     const semData = cob.cotas.filter(c => Number(c.valor) > 0 && !ehData(c.vencimento));
-    if (semData.length) throw new Error(`Há ${semData.length} cota(s) sem data de vencimento.`);
+    if (semData.length) { mostrarGuia('cotas'); throw new Error(`Há ${semData.length} cota(s) sem data de vencimento.`); }
   }
   $('#btSalvar').addEventListener('click', () => executar(async () => {
     validar();
@@ -627,6 +782,7 @@ function telaCobranca(id, params) {
     cob.despesas = cob.despesas.filter(d => Number(d.valor) > 0);
     cob.pagamentos = cob.pagamentos.filter(a => Number(a.valor) > 0);
     const pSemData = cob.pagamentos.filter(a => !ehData(a.data));
+    if (pSemData.length) mostrarGuia('pagamentos');
     if (pSemData.length) throw new Error(`Há ${pSemData.length} pagamento(s) sem data.`);
     await salvarRegistro('cobrancas', cob);
     sujo = false;
@@ -972,7 +1128,7 @@ async function abrirBase() {
   document.body.classList.add('conectado');
   document.body.classList.toggle('admin', Auth.ehAdmin());
   $('#statusArmaz').textContent = Armaz.descricao();
-  $('#usuarioTopo').innerHTML = `<a href="#/conta">${esc(Auth.usuario.nome)}</a>${Auth.ehAdmin() ? '<span class="chip neutro">Administrador</span>' : ''}<button class="bt-sair" id="btSair">Sair</button>`;
+  $('#usuarioTopo').innerHTML = `<a href="#/conta" class="av-usuario" title="Minha conta">${esc(iniciais(Auth.usuario.nome))}</a><a href="#/conta">${esc(Auth.usuario.nome)}</a>${Auth.ehAdmin() ? '<span class="chip neutro">Administrador</span>' : ''}<button class="bt-sair" id="btSair">Sair</button>`;
   $('#btSair').addEventListener('click', () => {
     if (sujo && !confirm('Há alterações não salvas. Sair assim mesmo?')) return;
     sujo = false;
@@ -1154,6 +1310,20 @@ function mostrarConvite(nome, login, senha) {
 
 /* ================= Início ================= */
 function eventosGlobais() {
+  $$('[data-ic]').forEach(a => a.insertAdjacentHTML('afterbegin', ic(a.dataset.ic)));
+  aplicarTema(localStorage.getItem('cc-tema') || '');
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => aplicarTema(localStorage.getItem('cc-tema') || ''));
+  $$('.bt-tema').forEach(b => b.addEventListener('click', alternarTema));
+  $('#btMenuInf').addEventListener('click', e => { e.preventDefault(); document.body.classList.toggle('menu-aberto'); });
+  // Botões de escolha dos encargos: gravam no campo oculto [data-p] e avisam como um campo comum
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-seg] button[data-v]');
+    if (!b) return;
+    const g = b.closest('[data-seg]'), inp = $('input[data-p]', g);
+    $$('button[data-v]', g).forEach(x => x.classList.toggle('on', x === b));
+    inp.value = g.dataset.her === b.dataset.v ? '' : b.dataset.v;
+    ['input', 'change'].forEach(ev => inp.dispatchEvent(new Event(ev, { bubbles: true })));
+  });
   $('#btMenu').addEventListener('click', () => document.body.classList.toggle('menu-aberto'));
   $('#fundoMenu').addEventListener('click', () => document.body.classList.remove('menu-aberto'));
   document.addEventListener('click', e => { if (e.target.closest('[data-fechar]')) fecharModal(); });

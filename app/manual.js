@@ -25,6 +25,7 @@ const MANUAL = [
 
   ['cobranca', 'Cobrança (uma por unidade)', `
     <ul>
+      <li><b>Tela da cobrança</b>: no alto ficam o total devido (sempre atualizado), os botões Visualizar, Salvar PDF, Salvar Excel e Negociar acordo, e as abas <b>Dados</b>, <b>Cotas</b>, <b>Despesas</b>, <b>Pagamentos</b>, <b>Encargos</b> e <b>Cálculo</b>. A aba escolhida continua aberta ao passar para outra cobrança.</li>
       <li><b>Dados</b>: condomínio, unidade, tipo (judicial ou extrajudicial, com processo e juízo) e devedores (pode haver mais de um).</li>
       <li><b>Cotas em aberto</b>: competência, descrição, vencimento e valor originário. "Lançar meses em sequência" preenche vários meses de uma vez. Marque "Paga" para tirar a cota do cálculo sem apagá-la.</li>
       <li><b>Despesas pagas</b>: data, rubrica, descrição, valor e, se quiser, o <b>Id. no processo</b> (onde está o comprovante nos autos), que sai na planilha. Marque "Corrigir" para atualizar desde a data do pagamento.</li>
@@ -34,7 +35,7 @@ const MANUAL = [
     <p><b>Sugestões de descrição:</b> as opções que aparecem ao digitar a descrição de uma cota ou a rubrica de uma despesa podem ser alteradas pelo administrador pelo link "Editar as sugestões" nos quadros da cobrança ou em Configurações. A lista vale para toda a base.</p>`],
 
   ['pagamentos', 'Pagamentos recebidos (amortizações)', `
-    <p>No quadro "Pagamentos recebidos" da cobrança, lance cada pagamento parcial do devedor: data, valor, imputação e de onde abater.</p>
+    <p>Na aba "Pagamentos" da cobrança, lance cada pagamento parcial do devedor: data, valor, imputação e de onde abater.</p>
     <ul>
       <li><b>Imputação</b>: "Juros primeiro" (art. 354 do CC: juros e multa vencidos, depois o principal) ou "Principal primeiro".</li>
       <li><b>Abater de</b>: todas as cotas e despesas proporcionalmente, as mais antigas primeiro, despesas primeiro, só as cotas, só as despesas, ou uma cota ou despesa específica. Se o item escolhido ficar quitado, o que sobrar vai para os demais, dos mais antigos para os mais novos.</li>
@@ -61,7 +62,7 @@ const MANUAL = [
 
   ['planilhas', 'Planilhas em PDF e Excel', `
     <ul>
-      <li><b>Por cobrança</b>: botões no quadro "Cálculo" da cobrança.</li>
+      <li><b>Por cobrança</b>: botões no alto da tela da cobrança.</li>
       <li><b>Por cliente</b>: na tela do condomínio, "Planilha do cliente".</li>
       <li><b>Por devedor</b> e <b>por imóvel</b>: menus "Devedores" e "Imóveis".</li>
     </ul>
@@ -87,6 +88,7 @@ const MANUAL = [
     <p>Somente o administrador altera as configurações, cadastra usuários e exclui condomínios, cobranças e acordos. "Desconectar este aparelho" (em Minha conta) sai do login e da conta do Dropbox no aparelho.</p>`],
 
   ['instalar', 'Instalar como aplicativo', `
+    <p><b>Tema claro ou escuro:</b> o botão da lua (ou do sol) no topo alterna o tema; sem escolha, o programa segue o tema do aparelho. No celular, a barra de baixo leva a Cobranças, Acordos, Nova cobrança, Planilhas e ao menu completo.</p>
     <p>Botão <b>Instalar</b> no topo (ou "Instalar o aplicativo" no menu). O navegador pergunta se você quer instalar e cria o ícone na área de trabalho e no menu Iniciar (no celular, na tela inicial). Se o navegador não oferecer, o programa mostra o caminho pelo menu dele.</p>
     <p>No Chrome e no Edge (computador e Android), o login e a conexão com o Dropbox continuam valendo no aplicativo. No iPhone e no iPad, o aplicativo instalado tem armazenamento separado do Safari: conecte o Dropbox e entre de novo (os dados da equipe estão no Dropbox).</p>`],
 
