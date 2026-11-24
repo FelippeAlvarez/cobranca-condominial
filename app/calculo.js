@@ -215,7 +215,7 @@ function calcularCobranca(cob, dataCalc, pIn) {
   const aVencer = todas.filter(c => c.vencimento >= dataCalc);
   const parcCotas = todas.filter(c => c.vencimento < dataCalc).map(c => novaParcela({
     id: c.id, grupo: 'cota', c, rotulo: `${mesNum(c.competencia)} ${c.descricao || 'Cota condominial'}`.trim(), data: c.vencimento,
-    P0: p.honColuna ? r2(Number(c.valor) + r2(Number(c.valor) * p.honContr / 100)) : r2(Number(c.valor) * fatorEmbutir), corrDesde: c.vencimento, jurosDesde: c.vencimento, regimes: regsCota, multaPct: p.multa,
+    P0: p.honColuna ? r2(Number(c.valor) + r2(Number(c.valor) * p.honContr / 100)) : r2(Number(c.valor) * fatorEmbutir), corrDesde: c.vencimento, jurosDesde: c.vencimento, regimes: regsCota, multaPct: c.semMulta ? 0 : p.multa,
   }));
   const parcDesp = (cob.despesas || []).filter(d => Number(d.valor) > 0 && d.data && d.data <= dataCalc)
     .sort((a, b) => comparar(a.data, b.data)).map(d => novaParcela({
@@ -346,7 +346,8 @@ function descCriterios(r) {
   if (p.tipoJuros !== 'selic') partes.push(`Correção monetária: ${descIndice(p)}${p.indice === 'Nenhum' ? '' : ', desde o vencimento de cada cota'}.`);
   partes.push(descJuros(p) + '.');
   if (p.lei14905) partes.push(`A partir de ${fmtData(DATA_LEI_14905)} (Lei 14.905/2024): correção pelo IPCA e juros pela taxa legal.`);
-  partes.push(`Multa: ${fmtPct(p.multa)}% sobre o valor corrigido.`);
+  const semMulta = r.cotas.filter(x => x.c.semMulta).map(x => x.c.descricao || 'débito').filter((d, i, a) => a.indexOf(d) === i);
+  partes.push(`Multa: ${fmtPct(p.multa)}% sobre o valor corrigido${semMulta.length ? ` (sem multa: ${semMulta.join(', ')})` : ''}.`);
   if (p.honColuna && p.honContr) partes.push(`Honorários advocatícios contratuais: ${fmtPct(p.honContr)}% sobre o valor de cada cota, compondo a base de cálculo da correção monetária, dos juros e da multa.`);
   if (!p.embutir && p.honContr) partes.push(`Honorários advocatícios contratuais: ${fmtPct(p.honContr)}% sobre o débito atualizado.`);
   if (r.despesas.length) partes.push('Despesas corrigidas desde a data de cada pagamento' + (r.despesas.some(x => x.d.corrigir === false) ? ', quando indicado' : '') + '.');

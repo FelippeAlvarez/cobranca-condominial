@@ -164,7 +164,7 @@ function abrirImportacao(opcoes) {
       if (!comp && venc) comp = venc.slice(0, 7);
       if (!venc && comp) venc = diaDoMes(comp, st.dia);
       if (!venc) { ign.data.push(nLinha); return; }
-      const cota = { id: novoId(), competencia: comp, vencimento: venc, valor, descricao: textoCel(pegar(l, 'descricao')) || 'Cota condominial' };
+      const cota = { id: novoId(), competencia: comp, vencimento: venc, valor, descricao: textoCel(pegar(l, 'descricao')) || textoCel(pegar(l, 'rubrica')) || 'Cota condominial' };
       if (st.destino === 'lote') {
         const unidade = textoCel(pegar(l, 'unidade')) || st.fixo.unidade.trim();
         if (!unidade) { ign.unidade.push(nLinha); return; }

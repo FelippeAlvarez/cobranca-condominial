@@ -32,7 +32,7 @@ const MANUAL = [
       <li><b>Encargos e honorários contratuais</b>: em branco, valem os do condomínio. Os honorários contratuais podem sair em linha própria, <b>embutidos no valor originário</b> das cotas (sem menção na planilha) ou <b>em coluna logo após o valor da cota</b>; nos dois últimos casos, a correção, os juros e a multa incidem sobre a cota + honorários.</li>
       <li><b>Honorários sucumbenciais</b>: percentual (com ou sem as despesas na base) ou valor fixo, corrigido desde a fixação.</li>
     </ul>
-    <p><b>Sugestões de descrição:</b> as opções que aparecem ao digitar a descrição de uma cota ou a rubrica de uma despesa podem ser alteradas pelo administrador pelo link "Editar as sugestões" nos quadros da cobrança ou em Configurações. A lista vale para toda a base.</p>`],
+    <p><b>Rubricas:</b> cada linha da aba Cotas tem uma rubrica (cota condominial, cota extra, multa por infração condominial, saldo de acordo descumprido etc.). A seta ao lado do campo mostra todas as opções; também é possível digitar outra. A coluna "Multa" indica se a multa moratória incide sobre aquele débito. As opções da lista e as rubricas das despesas podem ser alteradas pelo administrador pelo link "Editar as sugestões" nos quadros da cobrança ou em Configurações. A lista vale para toda a base.</p>`],
 
   ['pagamentos', 'Pagamentos recebidos (amortizações)', `
     <p>Na aba "Pagamentos" da cobrança, lance cada pagamento parcial do devedor: data, valor, imputação e de onde abater.</p>

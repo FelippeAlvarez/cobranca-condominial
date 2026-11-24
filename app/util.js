@@ -117,6 +117,38 @@ function perguntar(titulo, html, botoes) {
 const nomeArquivo = (...partes) => partes.filter(Boolean).join('-').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
 
+/* ---------- Campo de texto livre com sugestões ----------
+   O <datalist> do navegador só mostra as sugestões parecidas com o que já está escrito
+   (com "Cota condominial" no campo, só aparece ela). A seta abre a lista inteira. */
+const campoSugestao = (attrs, lista) => `<span class="campo-sug"><input ${attrs} list="${lista}" autocomplete="off"><button type="button" class="bt-sug" data-lista="${lista}" tabindex="-1" title="Ver todas as opções" aria-label="Ver todas as opções"><svg class="ic" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span>`;
+function fecharSugestoes() { $('#menuSug')?.remove(); }
+document.addEventListener('click', e => {
+  const op = e.target.closest('#menuSug [data-v]');
+  if (op) {
+    const inp = $('#menuSug')._campo;
+    inp.value = op.dataset.v;
+    ['input', 'change'].forEach(ev => inp.dispatchEvent(new Event(ev, { bubbles: true })));
+    fecharSugestoes(); inp.focus(); return;
+  }
+  const b = e.target.closest('.bt-sug');
+  if (!b) { if (!e.target.closest('#menuSug')) fecharSugestoes(); return; }
+  const aberto = $('#menuSug')?._botao === b;
+  fecharSugestoes();
+  if (aberto) return;
+  const inp = $('input', b.parentElement), opcoes = $$(`#${b.dataset.lista} option`).map(o => o.value);
+  const m = document.createElement('div');
+  m.id = 'menuSug'; m.className = 'menu-sug'; m._campo = inp; m._botao = b;
+  m.innerHTML = opcoes.map(v => `<button type="button" data-v="${esc(v)}" class="${v === inp.value ? 'on' : ''}">${esc(v)}</button>`).join('')
+    + '<small>Ou digite outra rubrica no campo.</small>';
+  document.body.appendChild(m);
+  const r = b.parentElement.getBoundingClientRect(), alt = m.offsetHeight;
+  m.style.minWidth = Math.max(220, r.width) + 'px';
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = (r.bottom + alt + 8 > innerHeight && r.top > alt ? r.top - alt - 4 : r.bottom + 4) + 'px';
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharSugestoes(); });
+addEventListener('scroll', fecharSugestoes, true);
+
 /* ---------- Ícones (traço, 24×24) e tema ---------- */
 const ICONES = {
   inicio: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',

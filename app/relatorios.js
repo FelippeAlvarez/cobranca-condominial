@@ -24,11 +24,16 @@ function linhasInfo(cob) {
 }
 
 // Resumo (rótulo, valor, estilo) usado no PDF e na tela
+// Título da tabela: "Cotas condominiais" só quando todas as linhas são cotas comuns; com cota extra, multa por infração,
+// saldo de acordo etc., "Débitos condominiais"
+const tituloDebitos = r => r.cotas.every(x => !x.c.descricao || normalizar(x.c.descricao) === 'cota condominial')
+  ? 'Cotas condominiais em aberto' : 'Débitos condominiais em aberto';
+
 function itensResumo(r) {
   const itens = [
-    ...(r.p.honColuna ? [['Cotas condominiais em aberto (valor originário)', r.tc.cota],
+    ...(r.p.honColuna ? [[`${tituloDebitos(r)} (valor originário)`, r.tc.cota],
       [`(+) Honorários advocatícios contratuais (${fmtPct(r.p.honContr)}% sobre as cotas)`, r.tc.hon]]
-      : [['Cotas condominiais em aberto (valor originário)', r.tc.original]]),
+      : [[`${tituloDebitos(r)} (valor originário)`, r.tc.original]]),
     ['(+) Correção monetária', r.tc.correcao],
     [r.amort.length ? '(+) Juros de mora (em aberto)' : '(+) Juros de mora', r.tc.juros],
     [r.amort.length ? '(+) Multa (em aberto)' : '(+) Multa', r.tc.multa],
@@ -93,11 +98,11 @@ function secaoCobrancaPDF(P, cob, r) {
   blocoInfoPDF(P, `${nomeCond(cob)} - ${cob.unidade || 'Unidade'}`, linhasInfo(cob));
   paragrafoPDF(P, descCriterios(r), 8, 'normal', COR_SUAVE);
   P.y += 3;
-  subtituloPDF(P, 'Cotas condominiais em aberto');
+  subtituloPDF(P, tituloDebitos(r));
   const pag = r.amort.length > 0, hc = r.p.honColuna;
   if (r.cotas.length) {
     tabelaPDF(P, [
-      { t: 'Competência', w: 18, nw: true }, { t: 'Descrição', w: hc ? 22 : 36 }, { t: 'Vencimento', w: 20, nw: true },
+      { t: 'Competência', w: 18, nw: true }, { t: 'Rubrica', w: hc ? 22 : 36 }, { t: 'Vencimento', w: 20, nw: true },
       ...(hc ? [{ t: 'Valor da cota', w: 20, a: 'r' }, { t: `Honorários contratuais (${fmtPct(r.p.honContr)}%)`, w: 22, a: 'r' }] : [{ t: 'Valor originário', w: 22, a: 'r' }]),
       { t: 'Fator de correção', w: 20, a: 'r' }, { t: 'Valor corrigido', w: 22, a: 'r' }, { t: 'Dias', w: 11, a: 'r' },
       { t: pag ? 'Juros (em aberto)' : 'Juros', w: 20, a: 'r' }, { t: pag ? 'Multa (em aberto)' : 'Multa', w: 20, a: 'r' },
@@ -252,10 +257,10 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   const vz = { v: '', s: 'bt' };
 
   // Cotas: as linhas preenchidas e as em branco têm as mesmas fórmulas (calculam quando o valor é informado)
-  L.push(null, [{ v: 'Cotas condominiais em aberto', s: 'b' }]);
+  L.push(null, [{ v: tituloDebitos(r), s: 'b' }]);
   // Letras das colunas das cotas (com honorários em coluna, a partir da E andam uma posição)
   const [cF, cCor, cDias, cJ, cM, cT] = hc ? ['F', 'G', 'H', 'I', 'J', 'K'] : ['E', 'F', 'G', 'H', 'I', 'J'];
-  L.push({ c: ['Competência', 'Descrição', 'Vencimento', ...(hc ? ['Valor da cota', `Honorários contratuais (${fmtPct(p.honContr)}%)`] : ['Valor originário']), 'Fator de correção', 'Valor corrigido', 'Dias de atraso', 'Juros', 'Multa', 'Total'].map(v => ({ v, s: 'cab' })), altura: 30 });
+  L.push({ c: ['Competência', 'Rubrica', 'Vencimento', ...(hc ? ['Valor da cota', `Honorários contratuais (${fmtPct(p.honContr)}%)`] : ['Valor originário']), 'Fator de correção', 'Valor corrigido', 'Dias de atraso', 'Juros', 'Multa', 'Total'].map(v => ({ v, s: 'cab' })), altura: 30 });
   const ini = L.length + 1;
   const linhaCota = (x) => {
     if (!simples) {
@@ -268,7 +273,7 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
     L.push([x ? mesNum(x.c.competencia) : null, x ? x.c.descricao || 'Cota condominial' : null, { v: x ? x.c.vencimento : '', s: 'd' },
       ...(hc ? [{ v: x ? x.cota : '', s: 'm' }, se(`ROUND(D${n}*${HONC},2)`, x?.hon, 'm')] : [{ v: x ? x.valor : '', s: 'm' }]),
       se(fator('C' + n), x?.e.fator, 'f'), se(`ROUND(${base}*${cF}${n},2)`, x?.e.corrigido, 'm'), se(`MAX(0,${DATA}-C${n})`, x?.e.dias, 'i'),
-      se(`ROUND(${cCor}${n}*${JUROS}/30*${cDias}${n},2)`, x?.e.juros, 'm'), se(`IF(${cDias}${n}>0,ROUND(${cCor}${n}*${MULTA},2),0)`, x?.e.multa, 'm'), se(`${cCor}${n}+${cJ}${n}+${cM}${n}`, x?.e.total, 'm')]);
+      se(`ROUND(${cCor}${n}*${JUROS}/30*${cDias}${n},2)`, x?.e.juros, 'm'), se(x?.c.semMulta ? '0' : `IF(${cDias}${n}>0,ROUND(${cCor}${n}*${MULTA},2),0)`, x?.e.multa, 'm'), se(`${cCor}${n}+${cJ}${n}+${cM}${n}`, x?.e.total, 'm')]);
   };
   r.cotas.forEach(linhaCota);
   if (simples) for (let i = 0; i < LINHAS_EXTRAS_COTAS; i++) linhaCota(null);
@@ -312,7 +317,7 @@ function folhaCobrancaXLSX(cob, r, nomeFolha, ultIdx) {
   const refTotal = linhaRes('Total devido', { f: partes.join('+'), v: r.total }, true);
   L.push(null);
   const notasExcel = simples ? [
-    `Para incluir meses ou despesas, preencha as linhas em branco das tabelas (para as cotas: competência, descrição, vencimento e ${hc ? 'valor da cota; os honorários são calculados' : 'valor originário'}). A correção, os juros e a multa são calculados e somados aos totais. Para mais linhas, insira-as antes da última linha em branco e copie as fórmulas da linha de cima.`,
+    `Para incluir meses ou despesas, preencha as linhas em branco das tabelas (para os débitos: competência, rubrica, vencimento e ${hc ? 'valor da cota; os honorários são calculados' : 'valor originário'}; num débito sem multa moratória, apague a fórmula da coluna Multa e digite 0). A correção, os juros e a multa são calculados e somados aos totais. Para mais linhas, insira-as antes da última linha em branco e copie as fórmulas da linha de cima.`,
     'Alterando a data do cálculo ou os percentuais, todos os valores são recalculados, inclusive os fatores de correção (índices na folha "Índices").',
   ] : ['Este cálculo tem pagamentos, art. 523 do CPC ou juros pela taxa legal, SELIC ou Lei 14.905: os valores foram calculados pelo programa e estão fixos nesta planilha. Para alterar, use o programa e gere a planilha de novo.'];
   [descCriterios(r), ...notasCalculo(r), ...notasExcel]

@@ -1,12 +1,12 @@
 'use strict';
 /* Cobrança Condominial — dados, telas e editor das cobranças */
 
-const VERSAO = '1.5.0';
+const VERSAO = '1.6.0';
 
 /* ================= Dados ================= */
 const D = { config: null, indices: null, condominios: {}, cobrancas: {}, acordos: {}, carregadoEm: 0 };
 
-const DESCRICOES_COTAS_PADRAO = ['Cota condominial', 'Cota extra', 'Fundo de reserva', 'Fundo de obras', 'Rateio extraordinário', 'Água', 'Gás'];
+const DESCRICOES_COTAS_PADRAO = ['Cota condominial', 'Cota extra', 'Multa por infração condominial', 'Saldo de acordo descumprido', 'Fundo de reserva', 'Fundo de obras', 'Rateio extraordinário', 'Água', 'Gás'];
 const RUBRICAS_PADRAO = [
   'Custas iniciais', 'Taxa judiciária', 'Custas de distribuição', 'Diligência de oficial de justiça', 'Certidão de ônus reais (RGI)',
   'Certidão', 'Registro / averbação', 'Publicação de edital', 'Postagem / AR', 'Cópias e autenticações', 'Avaliação / perícia', 'Outras despesas',
@@ -18,6 +18,8 @@ function normalizarConfig(c) {
   c.padroes = { ...PADROES, ...(c.padroes || {}) };
   if (!Array.isArray(c.rubricas) || !c.rubricas.length) c.rubricas = [...RUBRICAS_PADRAO];
   if (!Array.isArray(c.descricoesCotas) || !c.descricoesCotas.length) c.descricoesCotas = [...DESCRICOES_COTAS_PADRAO];
+  // Versão 1.6: novas rubricas sugeridas entram uma vez nas listas já salvas (o administrador pode removê-las depois)
+  if (!c.rubricasCotasV2) { ['Multa por infração condominial', 'Saldo de acordo descumprido'].forEach(r => { if (!c.descricoesCotas.includes(r)) c.descricoesCotas.splice(Math.min(2, c.descricoesCotas.length), 0, r); }); c.rubricasCotasV2 = true; }
   return c;
 }
 
@@ -467,11 +469,11 @@ function telaCobranca(id, params) {
   </section>
 
   <section class="painel-guia" data-painel="cotas">
-  <div class="cartao"><div class="cartao-cab"><h2>Cotas em aberto</h2><div class="acoes">
+  <div class="cartao"><div class="cartao-cab"><h2>Cotas e outros débitos em aberto</h2><div class="acoes">
       <button class="bt pequeno" id="btAddCota">+ Adicionar cota</button><button class="bt pequeno" id="btSeqCotas">Lançar meses em sequência</button>
       <button class="bt pequeno" id="btImpCotas">Importar planilha</button><button class="bt pequeno" id="btOrdCotas">Ordenar por vencimento</button></div></div>
-    <p class="dica">Valores originários de cada mês. Marque "Paga" para tirar a cota do cálculo sem apagá-la.${Auth.ehAdmin() ? ' <a href="#" id="sugCotas">Editar as sugestões de descrição</a>' : ''}</p>
-    <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Competência</th><th>Descrição</th><th>Vencimento</th><th>Atraso</th><th class="num">Valor originário</th><th class="cen">Paga</th><th></th></tr></thead><tbody id="cotas"></tbody></table></div>
+    <p class="dica">Valores originários de cada mês. Na rubrica, escolha na lista (seta) ou digite: cota condominial, cota extra, multa por infração, saldo de acordo descumprido etc. Desmarque "Multa" nos débitos sem multa moratória. Marque "Paga" para tirar o débito do cálculo sem apagá-lo.${Auth.ehAdmin() ? ' <a href="#" id="sugCotas">Editar as sugestões de rubrica</a>' : ''}</p>
+    <div class="rolagem"><table class="tabela tabela-edit"><thead><tr><th>Competência</th><th>Rubrica</th><th>Vencimento</th><th>Atraso</th><th class="num">Valor originário</th><th class="cen" title="Aplicar a multa moratória">Multa</th><th class="cen">Paga</th><th></th></tr></thead><tbody id="cotas"></tbody></table></div>
     <div id="totCotas" class="dica" style="margin-top:8px"></div></div>
   </section>
 
@@ -572,18 +574,20 @@ function telaCobranca(id, params) {
   function desenharCotas() {
     $('#cotas').innerHTML = cob.cotas.map((c, i) => `<tr data-i="${i}" class="${c.pago ? 'excluido' : ''}">
       <td><input type="month" data-k="competencia" value="${esc(c.competencia || '')}"></td>
-      <td><input data-k="descricao" list="dlDescCotas" value="${esc(c.descricao || '')}" placeholder="Cota condominial"></td>
+      <td>${campoSugestao(`data-k="descricao" value="${esc(c.descricao || '')}" placeholder="Cota condominial"`, 'dlDescCotas')}</td>
       <td><input type="date" data-k="vencimento" value="${esc(c.vencimento || '')}"></td>
       <td class="c-atraso">${atrasoCota(c)}</td>
       <td><input data-k="valor" class="num" inputmode="decimal" value="${c.valor ? fmtNum(c.valor) : ''}"></td>
+      <td class="cen"><input type="checkbox" data-k="multa" ${c.semMulta ? '' : 'checked'} title="Aplicar a multa moratória a este débito"></td>
       <td class="cen"><input type="checkbox" data-k="pago" ${c.pago ? 'checked' : ''}></td>
-      <td><button class="bt-x" title="Remover">&times;</button></td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Nenhuma cota lançada.</td></tr>';
+      <td><button class="bt-x" title="Remover">&times;</button></td></tr>`).join('') || '<tr><td colspan="8" class="vazio">Nenhum débito lançado.</td></tr>';
     $$('#cotas tr[data-i]').forEach(tr => {
       const c = cob.cotas[+tr.dataset.i];
       $$('[data-k]', tr).forEach(inp => inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
         const k = inp.dataset.k;
         if (k === 'valor') c.valor = r2(parseValor(inp.value));
         else if (k === 'pago') { c.pago = inp.checked; tr.classList.toggle('excluido', c.pago); }
+        else if (k === 'multa') { if (inp.checked) delete c.semMulta; else c.semMulta = true; }
         else c[k] = inp.value;
         // Competência nova sem vencimento: sugere o mesmo dia de vencimento da cota anterior
         if (k === 'competencia' && ehMes(inp.value) && !c.vencimento) {
@@ -625,7 +629,7 @@ function telaCobranca(id, params) {
   function desenharDespesas() {
     $('#despesas').innerHTML = cob.despesas.map((d, i) => `<tr data-i="${i}">
       <td><input type="date" data-k="data" value="${esc(d.data || '')}"></td>
-      <td><input data-k="rubrica" list="dlRubricas" value="${esc(d.rubrica || '')}"></td>
+      <td>${campoSugestao(`data-k="rubrica" value="${esc(d.rubrica || '')}"`, 'dlRubricas')}</td>
       <td><input data-k="descricao" value="${esc(d.descricao || '')}"></td>
       <td><input data-k="idProc" class="id-proc" value="${esc(d.idProc || '')}" placeholder="Ex.: 123456789" title="Id. do documento no processo eletrônico (comprovante da despesa)"></td>
       <td><input data-k="valor" class="num" inputmode="decimal" value="${d.valor ? fmtNum(d.valor) : ''}"></td>
@@ -643,7 +647,7 @@ function telaCobranca(id, params) {
     });
   }
   $('#btAddDesp').addEventListener('click', () => { cob.despesas.push({ id: novoId(), data: hoje(), rubrica: '', descricao: '', valor: 0, corrigir: true }); desenharDespesas(); marcarSujo(); });
-  $('#sugCotas')?.addEventListener('click', e => { e.preventDefault(); executar(() => editarSugestoes('descricoesCotas', 'Sugestões de descrição das cotas')); });
+  $('#sugCotas')?.addEventListener('click', e => { e.preventDefault(); executar(() => editarSugestoes('descricoesCotas', 'Sugestões de rubrica dos débitos')); });
   $('#sugRubricas')?.addEventListener('click', e => { e.preventDefault(); executar(() => editarSugestoes('rubricas', 'Sugestões de rubrica das despesas')); });
   $('#btImpDesp').addEventListener('click', () => abrirImportacao({ destino: 'despesas', aoConcluir: lista => { cob.despesas.push(...lista); desenharDespesas(); alterado(); } }));
   desenharDespesas();
@@ -816,9 +820,10 @@ function lancarSequencia(cob, depois) {
       <div class="campo"><label>Dia do vencimento</label><input type="number" id="sqDia" min="1" max="31" value="${ult ? +ult.vencimento.slice(8) : 10}"></div>
       <div class="campo"><label>Vencimento</label><select id="sqMes"><option value="0">No mês da competência</option><option value="1">No mês seguinte</option></select></div>
       <div class="campo"><label>Valor de cada mês (R$)</label><input id="sqValor" inputmode="decimal" value="${ult?.valor ? fmtNum(ult.valor) : ''}"></div>
-      <div class="campo w2"><label>Descrição</label><input id="sqDesc" list="dlDescCotas" value="${esc(ult?.descricao || 'Cota condominial')}"></div>
+      <div class="campo w2"><label>Rubrica</label>${campoSugestao(`id="sqDesc" value="${esc(ult?.descricao || 'Cota condominial')}"`, 'dlDescCotas')}</div>
+      <div class="campo w2"><label class="inline" style="margin-top:22px"><input type="checkbox" id="sqMulta" ${ult?.semMulta ? '' : 'checked'}> Aplicar a multa moratória</label></div>
     </div>
-    <p class="dica">Os valores podem ser ajustados mês a mês depois. Competências já lançadas com a mesma descrição não são repetidas.</p>
+    <p class="dica">Os valores podem ser ajustados mês a mês depois. Competências já lançadas com a mesma rubrica não são repetidas.</p>
     <div class="acoes-linha"><button class="bt primario" id="sqOk">Lançar</button><button class="bt" data-fechar>Cancelar</button></div>`, 'modal-medio');
   if (ult && ult.vencimento.slice(0, 7) > ult.competencia) $('#sqMes').value = '1';
   $('#sqOk').addEventListener('click', () => executar(() => {
@@ -828,7 +833,7 @@ function lancarSequencia(cob, depois) {
     let n = 0;
     for (let m = a; m <= b; m = addMes(m, 1)) {
       if (cob.cotas.some(c => c.competencia === m && normalizar(c.descricao) === normalizar(desc))) continue;
-      cob.cotas.push({ id: novoId(), competencia: m, descricao: desc, vencimento: diaDoMes(addMes(m, +$('#sqMes').value), $('#sqDia').value), valor });
+      cob.cotas.push({ id: novoId(), competencia: m, descricao: desc, vencimento: diaDoMes(addMes(m, +$('#sqMes').value), $('#sqDia').value), valor, ...($('#sqMulta').checked ? {} : { semMulta: true }) });
       n++;
       if (n > 600) break;
     }
@@ -908,8 +913,8 @@ function telaConfig() {
     <p class="dica">Usados quando o condomínio e a cobrança não têm critérios próprios. Código Civil, art. 1.336, § 1º: juros convencionados ou, se não previstos, de 1% ao mês, e multa de até 2%.</p>
     <div id="encPad">${camposEncargosHTML(c.padroes, null)}</div>
     <label class="inline" style="margin-top:10px"><input type="checkbox" id="ignNeg" ${c.padroes.ignorarNegativos ? 'checked' : ''}> Desconsiderar índices mensais negativos (deflação) no IGP-M e no IPCA</label>
-    <h3 class="sec" style="margin-top:16px">Sugestões de descrição das cotas</h3>
-    <p class="dica">Opções ao digitar a descrição de uma cota (uma por linha).</p>
+    <h3 class="sec" style="margin-top:16px">Sugestões de rubrica dos débitos (cotas, multas, acordos)</h3>
+    <p class="dica">Opções da lista de rubricas dos débitos da cobrança (uma por linha). Também é possível digitar outra rubrica diretamente na cobrança.</p>
     <textarea id="descCotas" rows="5">${esc(c.descricoesCotas.join('\n'))}</textarea>
     <h3 class="sec" style="margin-top:16px">Rubricas de despesas</h3>
     <p class="dica">Sugestões ao lançar despesas (uma por linha).</p>
